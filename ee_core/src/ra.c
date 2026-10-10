@@ -5,7 +5,9 @@
 
   ee_core owns no thread once the game is running. Its only periodic code
   is the VBLANK_END interrupt handler in padhook.c (in-game reset), so
-  RA_OnVblank() is called from there. Apart from RA_SetupWatchList(),
+  RA_OnVblank() is called from there; under Mode 6, which turns the IGR
+  off, padhook.c installs a handler that calls nothing else. Apart from
+  RA_SetupWatchList(),
   which runs during init, everything here runs in interrupt context: no
   blocking, no waiting on DMA.
 

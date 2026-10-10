@@ -50,6 +50,7 @@ static powerbuttondata_t Power_Button;
 /* IGR Thread ID and interrupt handler */
 static int IGR_Thread_ID = -1;
 static int IGR_Intc_ID = -1;
+static int RA_Intc_ID = -1;
 
 /* IGR thread stack & stack size */
 #define IGR_STACK_SIZE (4 * 1024)
@@ -139,6 +140,8 @@ void IGR_RequestReset(void)
     /* The VBLANK handler below reads combo_type on its next tick and
        runs the reset from there; this only leaves the request. A reset
        already under way is not replaced. */
+    if (IGR_Thread_ID < 0)
+        return; /* Mode 6: no IGR, so no reset over the network either */
     if (Pad_Data.combo_type == 0x00)
         Pad_Data.combo_type = IGR_COMBO_START_SELECT;
 }
@@ -492,6 +495,26 @@ void Reset_Padhook(void)
 {
     IGR_Intc_ID = -1;
     IGR_Thread_ID = -1;
+}
+
+/* Mode 6 asks for no IGR, and the game gets none: no thread, no padOpen
+   patch, no CreateThread/ExecPS2 hooks. The per-frame RA snapshot still
+   needs a tick, so this handler carries RA_OnVblank alone. */
+static int RA_Intc_Handler(int cause)
+{
+    RA_OnVblank();
+
+    ExitHandler();
+
+    return 0;
+}
+
+void Install_RA_Vblank(void)
+{
+    if (RA_Intc_ID < 0) {
+        RA_Intc_ID = AddIntcHandler(kINTC_VBLANK_END, RA_Intc_Handler, 0);
+        EnableIntc(kINTC_VBLANK_END);
+    }
 }
 
 // Hook function for libpad scePadPortOpen

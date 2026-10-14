@@ -9,7 +9,6 @@
 #include "include/ioman.h"
 #include "include/system.h"
 #include "include/extern_irx.h"
-#include "include/cheatman.h"
 #include "include/sound.h"
 #include "include/ethsupport.h"
 #include "include/rawatch.h"
@@ -565,7 +564,6 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 {
     int i, fd, iop_fd, index, compatmask = 0;
     int EnablePS2Logo = 0;
-    int result;
     u64 startingLBA;
     unsigned int startCluster;
     char partname[256], filename[32];
@@ -746,19 +744,6 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     settings->common.zso_cache = bdmCacheSize;
 
     sbLoadWatchList(pDeviceData->bdmPrefix, game->startup); /* RA: watch list */
-
-    if ((result = sbLoadCheats(pDeviceData->bdmPrefix, game->startup)) < 0) {
-        if (gAutoLaunchBDMGame == NULL) {
-            switch (result) {
-                case -ENOENT:
-                    guiWarning(_l(_STR_NO_CHEATS_FOUND), 10);
-                    break;
-                default:
-                    guiWarning(_l(_STR_ERR_CHEATS_LOAD_FAILED), 10);
-            }
-        } else
-            LOG("Cheats error\n");
-    }
 
     if (gRememberLastPlayed) {
         configSetStr(configGetByType(CONFIG_LAST), "last_played", game->startup);

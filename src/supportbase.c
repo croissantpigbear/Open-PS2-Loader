@@ -9,9 +9,7 @@
 #include "include/ranet.h"
 #include "include/ioman.h"
 #include "modules/iopcore/common/cdvd_config.h"
-#include "include/cheatman.h"
 #include "include/pggsm.h"
-#include "include/cheatman.h"
 #include "include/ps2cnf.h"
 #include "include/gui.h"
 
@@ -784,8 +782,6 @@ int sbPrepare(base_game_info_t *game, config_set_t *configSet, int size_cdvdman,
 
     InitGSMConfig(configSet);
 
-    InitCheatsConfig(configSet);
-
     config_set_t *configGame = configGetByType(CONFIG_GAME);
 
 #ifdef PADEMU
@@ -1007,7 +1003,7 @@ static void sbCreateFoldersFromList(const char *path, const char **folders)
 
 void sbCreateFolders(const char *path, int createDiscImgFolders)
 {
-    const char *basicFolders[] = {"CFG", "THM", "LNG", "ART", "VMC", "CHT", "APPS", NULL};
+    const char *basicFolders[] = {"CFG", "THM", "LNG", "ART", "VMC", "APPS", NULL};
     const char *discImgFolders[] = {"CD", "DVD", NULL};
 
     sbCreateFoldersFromList(path, basicFolders);
@@ -1016,7 +1012,7 @@ void sbCreateFolders(const char *path, int createDiscImgFolders)
         sbCreateFoldersFromList(path, discImgFolders);
 }
 
-/* RA: the watch list sits next to the cheats, in RA/. The game's own
+/* RA: the watch list sits in RA/ on the device. The game's own
    device is searched first, then the share: the list is produced on the
    PC, and keeping it on the share beats rewriting the USB stick every
    time. */
@@ -1246,25 +1242,4 @@ void sbHashGame(const char *path, const char *name, const char *ext, const char 
     raHashSetStepLog(NULL);
     raHashLogClose();
     guiShowRANotice("The image could not be hashed", last_err);
-}
-
-int sbLoadCheats(const char *path, const char *file)
-{
-    char cheatfile[64];
-    int cheatMode = 0;
-
-    if (GetCheatsEnabled()) {
-        snprintf(cheatfile, sizeof(cheatfile), "%sCHT/%s.cht", path, file);
-        LOG("Loading Cheat File %s\n", cheatfile);
-
-        if ((cheatMode = load_cheats(cheatfile)) < 0)
-            LOG("Error: failed to load cheats\n");
-        else {
-            LOG("Cheats found\n");
-            if ((gAutoLaunchGame == NULL) && (gAutoLaunchBDMGame == NULL) && (cheatMode == 1))
-                guiManageCheats();
-        }
-    }
-
-    return cheatMode;
 }

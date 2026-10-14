@@ -45,7 +45,6 @@ struct EECoreConfig_t
     char g_ps2_gateway[16];
     unsigned char g_ps2_ETHOpMode;
 
-    u32 *gCheatList; // Store hooks/codes addr+val pairs
     /* RetroAchievements: watched addresses for this game and the size of
        one snapshot. The loader places the list in module storage, right
        behind the IOP modules, where the kernel leaves it alone for the

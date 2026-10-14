@@ -6,7 +6,7 @@
   them would mean rebuilding the firmware for every title. The PC client
   derives the list from the game's achievement set when the console asks
   about an image; the console keeps it in memory and as a file next to
-  the game, the same way OPL keeps cheats in CHT/.
+  the game, in RA/.
 
   Why a list of values instead of memory ranges: a set's addresses come
   in tight clusters spread over a wide span, and ranges covering the

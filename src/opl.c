@@ -32,7 +32,6 @@
 #include "include/appsupport.h"
 #include "include/mmcesupport.h"
 
-#include "include/cheatman.h"
 #include "include/sound.h"
 #include "include/xparam.h"
 #include "include/rabadge.h" /* RA: "tracked game" badge in the list */
@@ -173,7 +172,6 @@ int gSFXVolume;
 int gBootSndVolume;
 int gBGMVolume;
 char gDefaultBGMPath[128];
-int gCheatSource;
 int gGSMSource;
 int gPadEmuSource;
 int gFadeDelay;

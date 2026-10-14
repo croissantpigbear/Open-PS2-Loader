@@ -15,10 +15,9 @@ EE_OBJS_DIR = obj/
 
 GSMCORE_EE_OBJS = gsm_engine.o gsm_api.o dve_reg.o
 IGSCORE_EE_OBJS = igs_api.o
-CHEATCORE_EE_OBJS = cheat_engine.o cheat_api.o
 
 EE_OBJS = main.o syshook.o iopmgr.o modmgr.o util.o patches.o patches_asm.o \
-	  padhook.o cd_igr_rpc.o tlb.o asm.o crt0.o ra.o ra_overlay.o $(GSMCORE_EE_OBJS) $(CHEATCORE_EE_OBJS)
+	  padhook.o cd_igr_rpc.o tlb.o asm.o crt0.o ra.o ra_overlay.o $(GSMCORE_EE_OBJS)
 MAPFILE = ee_core.map
 
 EE_INCS := -I$(PS2SDK)/ee/include -I$(PS2SDK)/common/include -I$(PS2SDK)/ports/include -Iinclude -I.

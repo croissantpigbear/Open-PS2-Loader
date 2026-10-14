@@ -10,7 +10,6 @@
 #include "include/ioman.h"
 #include "include/system.h"
 #include "include/extern_irx.h"
-#include "include/cheatman.h"
 #include "modules/iopcore/common/cdvd_config.h"
 
 #define NEWLIB_PORT_AWARE
@@ -573,7 +572,6 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
 {
     int i, compatmask;
     int EnablePS2Logo = 0;
-    int result;
     char filename[32], partname[256];
     base_game_info_t *game = &ethGames[id];
     struct cdvdman_settings_smb *settings;
@@ -637,16 +635,6 @@ static void ethLaunchGame(item_list_t *itemList, int id, config_set_t *configSet
     compatmask = sbPrepare(game, configSet, size_smb_cdvdman_irx, smb_cdvdman_irx, &i);
 
     sbLoadWatchList(ethPrefix, game->startup); /* RA: watch list */
-
-    if ((result = sbLoadCheats(ethPrefix, game->startup)) < 0) {
-        switch (result) {
-            case -ENOENT:
-                guiWarning(_l(_STR_NO_CHEATS_FOUND), 10);
-                break;
-            default:
-                guiWarning(_l(_STR_ERR_CHEATS_LOAD_FAILED), 10);
-        }
-    }
 
     settings = (struct cdvdman_settings_smb *)((u8 *)(&smb_cdvdman_irx) + i);
 

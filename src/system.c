@@ -27,7 +27,6 @@
 #include "../ee_core/include/coreconfig.h"
 #include <osd_config.h>
 #include "include/pggsm.h"
-#include "include/cheatman.h"
 #include "include/xparam.h"
 
 #ifdef PADEMU
@@ -839,8 +838,6 @@ void sysPrintEECoreConfig(struct EECoreConfig_t *config)
 
     LOG("IP=%s NM=%s GW=%s mode: %d\n", config->g_ps2_ip, config->g_ps2_netmask, config->g_ps2_gateway, config->g_ps2_ETHOpMode);
 
-    LOG("PS2RD Cheat Engine = %s\n", config->gCheatList == NULL ? "Disabled" : "Enabled");
-
     LOG("EnforceLanguage = %s\n", config->enforceLanguage == 0 ? "Disabled" : "Enabled");
 
     LOG("GSM = %s\n", config->EnableGSMOp == 0 ? "Disabled" : "Enabled");
@@ -981,12 +978,6 @@ void sysLaunchLoaderElf(const char *filename, const char *mode_str, int size_cdv
     config->EnableDebug = gEnableDebug;
     config->HDDSpindown = gHDDSpindown;
     config->g_ps2_ETHOpMode = gETHOpMode;
-
-    if (GetCheatsEnabled()) {
-        set_cheats_list();
-        config->gCheatList = GetCheatsList();
-    } else
-        config->gCheatList = NULL;
 
     /* RA: the watch list for this game. It may be absent; telemetry then
        carries no snapshot, which is not an error. */

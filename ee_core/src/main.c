@@ -12,7 +12,6 @@
 #include "util.h"
 #include "syshook.h"
 #include "gsm_api.h"
-#include "cheat_api.h"
 #include "padhook.h"
 #include "ra.h"
 #include "coreconfig.h"
@@ -72,8 +71,6 @@ static int eecoreInit(int argc, char **argv)
 
     DPRINTF("IP=%s NM=%s GW=%s mode: %d\n", config->g_ps2_ip, config->g_ps2_netmask, config->g_ps2_gateway, config->g_ps2_ETHOpMode);
 
-    DPRINTF("PS2RD Cheat Engine = %s\n", config->gCheatList == NULL ? "Disabled" : "Enabled");
-
     DPRINTF("GSM = %s\n", config->EnableGSMOp == 0 ? "Disabled" : "Enabled");
 
 #ifdef PADEMU
@@ -93,10 +90,6 @@ static int eecoreInit(int argc, char **argv)
     // g_compat_mask is used on ASM directly.
     g_compat_mask = config->_CompatMask;
     DPRINTF("Compat Mask = 0x%02x\n", g_compat_mask);
-
-    if (config->gCheatList) {
-        EnableCheats();
-    }
 
     /* RetroAchievements: take the watch list from where the loader
        placed it, behind the IOP modules in module storage. */

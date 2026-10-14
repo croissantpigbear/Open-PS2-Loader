@@ -433,8 +433,16 @@ int raAskPC(const char *hash, const char *serial, const char *savepath,
             }
             idx = -1;
             hdr = 0;
-            if (sscanf(g_rx, "RAC1 %d %d %n", &idx, &len, &hdr) >= 2 && idx == i)
+            /* The data is binary and starts right after one space. A
+               space in the format before %n would also skip data bytes
+               0x09..0x0D and 0x20, so the header ends at the number and
+               the one space is stepped over by hand. */
+            if (sscanf(g_rx, "RAC1 %d %d%n", &idx, &len, &hdr) >= 2 && idx == i && hdr > 0 &&
+                g_rx[hdr] == ' ') {
+                hdr++;
                 break;
+            }
+            hdr = 0;
         }
 
         if (idx != i) {

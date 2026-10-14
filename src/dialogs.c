@@ -525,34 +525,6 @@ struct UIItem diaGSConfig[] = {
     // end of dialog
     {UI_TERMINATOR}};
 
-// Per Game Settings > Cheat Menu --Bat--
-struct UIItem diaCheatConfig[] = {
-    {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_CHEAT_SETTINGS}}},
-    {UI_SPLITTER},
-
-    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_SETTINGS_SOURCE}}},
-    {UI_SPACER},
-    {UI_ENUM, CHTCFG_CHEATSOURCE, 1, 1, -1, 0, 0, {.intvalue = {0, 0}}},
-    {UI_BREAK},
-    {UI_BREAK},
-
-    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_ENABLECHEAT}}},
-    {UI_SPACER},
-    {UI_BOOL, CHTCFG_ENABLECHEAT, 1, 1, _STR_HINT_ENABLECHEAT, 0, 0, {.intvalue = {1, 1}}},
-    {UI_BREAK},
-
-    {UI_LABEL, 0, 1, 1, -1, -40, 0, {.label = {NULL, _STR_CHEATMODE}}},
-    {UI_SPACER},
-    {UI_ENUM, CHTCFG_CHEATMODE, 1, 1, _STR_HINT_CHEATMODE, 0, 0, {.intvalue = {0, 0}}},
-    {UI_BREAK},
-
-    // buttons
-    {UI_OK, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_OK}}},
-    {UI_BREAK},
-
-    // end of dialog
-    {UI_TERMINATOR}};
-
 #ifdef PADEMU
 struct UIItem diaPadEmuConfig[] = {
     {UI_LABEL, 0, 1, 1, -1, 0, 0, {.label = {NULL, _STR_PADEMU_SETTINGS}}},

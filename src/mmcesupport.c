@@ -9,7 +9,6 @@
 #include "include/ioman.h"
 #include "include/system.h"
 #include "include/extern_irx.h"
-#include "include/cheatman.h"
 #include "modules/iopcore/common/cdvd_config.h"
 #include "../ee_core/include/coreconfig.h"
 #include <usbhdfsd-common.h>
@@ -185,7 +184,6 @@ void mmceLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
 {
     int i, index, compatmask = 0;
     int EnablePS2Logo = 0;
-    int result;
 
     char partname[256], filename[32];
     base_game_info_t *game;
@@ -280,19 +278,6 @@ void mmceLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
     settings->common.layer1_start = layer1_start;
 
     sbLoadWatchList(mmcePrefix, game->startup); /* RA: watch list */
-
-    if ((result = sbLoadCheats(mmcePrefix, game->startup)) < 0) {
-        if (gAutoLaunchBDMGame == NULL) {
-            switch (result) {
-                case -ENOENT:
-                    guiWarning(_l(_STR_NO_CHEATS_FOUND), 10);
-                    break;
-                default:
-                    guiWarning(_l(_STR_ERR_CHEATS_LOAD_FAILED), 10);
-            }
-        } else
-            LOG("Cheats error\n");
-    }
 
     if (gRememberLastPlayed) {
         configSetStr(configGetByType(CONFIG_LAST), "last_played", game->startup);

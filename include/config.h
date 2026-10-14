@@ -51,10 +51,6 @@ enum CONFIG_INDEX {
 #define CONFIG_ITEM_GSMYOFFSET          "$GSMYOffset"
 #define CONFIG_ITEM_GSMFIELDFIX         "$GSMFIELDFix"
 
-// Per-Game CHEAT keys. -Bat-
-#define CONFIG_ITEM_CHEATSSOURCE "$CheatsSource"
-#define CONFIG_ITEM_ENABLECHEAT  "$EnableCheat"
-#define CONFIG_ITEM_CHEATMODE    "$CheatMode"
 
 #define CONFIG_ITEM_PADEMUSOURCE     "$PADEMUSource"
 #define CONFIG_ITEM_ENABLEPADEMU     "$EnablePadEmu"

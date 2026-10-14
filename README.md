@@ -112,7 +112,7 @@ types come with more or fewer features included.
 
 | Type (can be a combination) | Description                                                                             |
 | --------------------------- | --------------------------------------------------------------------------------------- |
-| `Release`                   | Regular OPL release with GSM, IGS, PADEMU, VMC, PS2RD Cheat Engine & Parental Controls. |
+| `Release`                   | Regular OPL release with GSM, IGS, PADEMU, VMC & Parental Controls.                     |
 | `DTL_T10000`                | OPL for TOOLs (DevKit PS2)                                                              |
 | `IGS`                       | OPL with InGame Screenshot feature.                                                     |
 | `PADEMU`                    | OPL with Pad Emulation for DS3 & DS4.                                                   |
@@ -137,7 +137,6 @@ USB modes:
 | `ART`  | for game art images                                  | all         |
 | `THM`  | for themes support                                   | all         |
 | `LNG`  | for translation support                              | all         |
-| `CHT`  | for cheats files                                     | all         |
 | `APPS`  | for ELF files                                       | all         |
 
 OPL will automatically create the above directory structure the first time you launch it and enable your favorite device.
@@ -263,25 +262,6 @@ boot=OPNPS2LD.ELF
 I would like to emphasize that in this method it is necessary that the ELF file and the title.cfg file must be in a folder, within the APPS folder.
 
 > NOTE: In both methods, it is necessary attention to the file names, because, as already mentioned: OPL is case sensitive.
-
-</p>
-</details>
-
-<details>
-  <summary> <b> Cheats </b> </summary>
-<p>
-
-OPL accepts `.cht` files in PS2RD format. Each cheat file corresponds to a specific game and must be stored in the `CHT` directory on your device.
-Cheats are structured as hexadecimal codes, with proper headers as descriptions to identify their function.
-You can activate cheats via OPL's graphical interface. Navigate to a games settings, enable cheats and select the desired mode.
-
-### cheat modes
-
-  * Auto Select Cheats:  
-This mode will enable and apply all cheat codes in your `.cht` file to your game automatically.
-
-  * Select Game Cheats:  
-When enabled a cheat selection menu will appear when you launch a game. You can navigate the menu and disable undesired cheats for this launch session. `Mastercode`s cannot be disabled as they are required for any other cheats to be applied.
 
 </p>
 </details>

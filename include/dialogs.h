@@ -107,11 +107,6 @@ enum UI_ITEMS {
     NETCFG_RECONNECT,
     NETCFG_OK,
 
-    CHTCFG_CHEATSOURCE,
-    CHTCFG_CHEATCFG,
-    CHTCFG_ENABLECHEAT,
-    CHTCFG_CHEATMODE,
-
     GSMCFG_GSMSOURCE,
     GSMCFG_GSCONFIG,
     GSMCFG_ENABLEGSM,
@@ -223,7 +218,6 @@ extern struct UIItem diaControllerConfig[];
 extern struct UIItem diaCompatConfig[];
 extern struct UIItem diaVMCConfig[];
 extern struct UIItem diaGSConfig[];
-extern struct UIItem diaCheatConfig[];
 
 extern struct UIItem diaConfig[];
 extern struct UIItem diaAbout[];

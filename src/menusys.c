@@ -42,7 +42,6 @@ enum MENU_IDs {
 
 enum GAME_MENU_IDs {
     GAME_COMPAT_SETTINGS = 0,
-    GAME_CHEAT_SETTINGS,
     GAME_GSM_SETTINGS,
     GAME_VMC_SETTINGS,
 #ifdef PADEMU
@@ -253,7 +252,6 @@ void menuInitGameMenu(void)
     submenuAppendItem(&gameMenu, -1, "RA: check game support", GAME_RA_CHECK, -1);
     submenuAppendItem(&gameMenu, -1, "RA: test PC connection", GAME_RA_TEST, -1);
     submenuAppendItem(&gameMenu, -1, NULL, GAME_COMPAT_SETTINGS, _STR_COMPAT_SETTINGS);
-    submenuAppendItem(&gameMenu, -1, NULL, GAME_CHEAT_SETTINGS, _STR_CHEAT_SETTINGS);
     submenuAppendItem(&gameMenu, -1, NULL, GAME_GSM_SETTINGS, _STR_GSCONFIG);
     submenuAppendItem(&gameMenu, -1, NULL, GAME_VMC_SETTINGS, _STR_VMC_SCREEN);
 #ifdef PADEMU
@@ -1176,8 +1174,6 @@ void menuHandleInputGameMenu()
                 guiShowRANotice("A connection test is already running", NULL);
         } else if (menuID == GAME_COMPAT_SETTINGS) {
             guiGameShowCompatConfig(selected_item->item->current->item.id, selected_item->item->userdata, itemConfig);
-        } else if (menuID == GAME_CHEAT_SETTINGS) {
-            guiGameShowCheatConfig();
         } else if (menuID == GAME_GSM_SETTINGS) {
             guiGameShowGSConfig();
         } else if (menuID == GAME_VMC_SETTINGS) {

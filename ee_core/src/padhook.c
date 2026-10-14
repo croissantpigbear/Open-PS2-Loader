@@ -32,7 +32,6 @@
 #ifdef IGS
 #include "igs_api.h"
 #endif
-#include "cheat_api.h"
 #include "cd_igr_rpc.h"
 #include "coreconfig.h"
 #include "ra.h"
@@ -218,13 +217,6 @@ static void IGR_Thread(void *arg)
                 DBGCOL(0x00FF00, IGR, "Stopping GSM");
             DPRINTF("Stopping GSM...\n");
             DisableGSM();
-        }
-
-        if (config->gCheatList) {
-            if (EnableDebug)
-                DBGCOL(0xFF0000, IGR, "Stopping CheatEngine");
-            DPRINTF("Stopping PS2RD Cheat Engine...\n");
-            DisableCheats();
         }
 
         if (EnableDebug)

@@ -1,9 +1,8 @@
 /*
   RA: loading the watch list for the game being launched.
 
-  Every game watches its own set of addresses. Baking them into the
-  code would mean rebuilding the loader per game, so the list arrives
-  as a file, the same way OPL already ships cheats from CHT/.
+  Every game watches its own set of addresses, so the list arrives as
+  a file, RA/<startup>.wl, or over the network from the menu.
 
   The PC client builds the file from the game's achievement set on
   RetroAchievements. The format is modules/network/common/ra_watch.h.

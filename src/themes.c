@@ -660,11 +660,11 @@ static void drawRAMark(struct menu_list *menu, struct submenu_list *item,
         int s0, s1, t0, t1;
         int ax, ay, bx, by, cx, cy, dx, dy;
 
-        side = coverW / 3;
-        if (side < 22)
-            side = 22;
-        if (side > 48)
-            side = 48;
+        side = coverW / 4;
+        if (side < 18)
+            side = 18;
+        if (side > 36)
+            side = 36;
         if (side > coverH / 2)
             side = coverH / 2;
         if (side < 4)
@@ -707,13 +707,13 @@ static void drawRAMark(struct menu_list *menu, struct submenu_list *item,
     topy = 0;
     refw = w;
 
-    /* A third of the cover width, within limits: on a small cover the
+    /* A quarter of the cover width, within limits: on a small cover the
        mark would swallow it, on a large one it would get lost. */
-    side = refw / 3;
-    if (side < 22)
-        side = 22;
-    if (side > 48)
-        side = 48;
+    side = refw / 4;
+    if (side < 18)
+        side = 18;
+    if (side > 36)
+        side = 36;
     if (side > h / 2)
         side = h / 2;
 

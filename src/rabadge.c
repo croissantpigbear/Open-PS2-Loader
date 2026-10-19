@@ -28,8 +28,12 @@
 #define RA_BADGE       "RA "  /* prefix before the name; ASCII only, the stock \
                                  theme font has no other glyphs */
 #define PS1_BADGE      "PS1 " /* a POPS image, see sbAppendVcdList */
-#define RA_BADGE_SLOTS 4      /* OPL has exactly this many devices: BDM, ETH, HDD, APP */
-#define RA_BADGE_TEXT  (ISO_GAME_NAME_MAX + 8)
+/* The same two marks after the name (gRABadgeSuffix): the list sorts by
+   the shown text, and a prefix pulls every tracked game to the top. */
+#define RA_SUFFIX      " [RA]"
+#define PS1_SUFFIX     " [PS1]"
+#define RA_BADGE_SLOTS 4                        /* OPL has exactly this many devices: BDM, ETH, HDD, APP */
+#define RA_BADGE_TEXT  (ISO_GAME_NAME_MAX + 16) /* room for " [PS1] [RA]" */
 
 struct ra_badge_slot
 {
@@ -118,14 +122,17 @@ void raBadgeRefresh(item_list_t *support, int count)
         char *dst = slot->text + (size_t)i * RA_BADGE_TEXT;
         const char *serial = support->itemGetStartup(support, i);
 
-        const char *ra = watchListExists(prefix, serial) ? RA_BADGE : "";
-        const char *ps1 = raItemIsPs1(support, i) ? PS1_BADGE : "";
+        int ra = watchListExists(prefix, serial);
+        int ps1 = raItemIsPs1(support, i);
 
-        if (ra[0] != '\0' || ps1[0] != '\0')
-            snprintf(dst, RA_BADGE_TEXT, "%s%s%s", ra, ps1,
-                     support->itemGetName(support, i));
-        else
+        if (!ra && !ps1)
             dst[0] = '\0'; /* empty means show the plain name */
+        else if (gRABadgeSuffix)
+            snprintf(dst, RA_BADGE_TEXT, "%s%s%s", support->itemGetName(support, i),
+                     ps1 ? PS1_SUFFIX : "", ra ? RA_SUFFIX : "");
+        else
+            snprintf(dst, RA_BADGE_TEXT, "%s%s%s", ra ? RA_BADGE : "",
+                     ps1 ? PS1_BADGE : "", support->itemGetName(support, i));
     }
 }
 

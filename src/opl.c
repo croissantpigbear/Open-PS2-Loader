@@ -155,6 +155,7 @@ int gEnableILK;
 int gEnableMX4SIO;
 int gEnableBdmHDD;
 int gAutosort;
+int gRABadgeSuffix;
 int gAutoRefresh;
 int gEnableNotifications;
 int gEnableArt;
@@ -971,6 +972,7 @@ static void _loadConfig()
             configGetInt(configOPL, CONFIG_OPL_HDD_GAME_LIST_CACHE, &gHDDGameListCache);
             configGetStrCopy(configOPL, CONFIG_OPL_EXIT_PATH, gExitPath, sizeof(gExitPath));
             configGetInt(configOPL, CONFIG_OPL_AUTO_SORT, &gAutosort);
+            configGetInt(configOPL, CONFIG_OPL_RA_BADGE_SUFFIX, &gRABadgeSuffix);
             configGetInt(configOPL, CONFIG_OPL_AUTO_REFRESH, &gAutoRefresh);
             configGetInt(configOPL, CONFIG_OPL_DEFAULT_DEVICE, &gDefaultDevice);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_WRITE, &gEnableWrite);
@@ -1146,6 +1148,7 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_HDD_GAME_LIST_CACHE, gHDDGameListCache);
         configSetStr(configOPL, CONFIG_OPL_EXIT_PATH, gExitPath);
         configSetInt(configOPL, CONFIG_OPL_AUTO_SORT, gAutosort);
+        configSetInt(configOPL, CONFIG_OPL_RA_BADGE_SUFFIX, gRABadgeSuffix);
         configSetInt(configOPL, CONFIG_OPL_AUTO_REFRESH, gAutoRefresh);
         configSetInt(configOPL, CONFIG_OPL_DEFAULT_DEVICE, gDefaultDevice);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_WRITE, gEnableWrite);
@@ -1783,6 +1786,7 @@ static void setDefaults(void)
     gExitPath[0] = '\0';
     gDefaultDevice = APP_MODE;
     gAutosort = 1;
+    gRABadgeSuffix = 0;
     gAutoRefresh = 0;
     gEnableDebug = 0;
     gPS2Logo = 0;

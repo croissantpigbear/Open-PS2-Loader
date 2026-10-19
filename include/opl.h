@@ -134,6 +134,9 @@ extern int gEnableMX4SIO;
 extern int gEnableBdmHDD;
 
 extern int gAutosort;
+/* RA: 0 = "RA " before the game name, 1 = " [RA]" after it, so the
+   list stays alphabetical */
+extern int gRABadgeSuffix;
 extern int gAutoRefresh;
 extern int gEnableNotifications;
 extern int gEnableArt;

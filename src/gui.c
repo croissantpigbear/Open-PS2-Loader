@@ -733,10 +733,14 @@ reselect_video_mode:
     previousTheme = thmGetGuiValue();
     diaSetEnum(diaUIConfig, UICFG_THEME, (const char **)thmGetGuiList());
     diaSetEnum(diaUIConfig, UICFG_LANG, (const char **)lngGetGuiList());
+    const char *raBadgePos[] = {_l(_STR_RA_BADGE_PREFIX), _l(_STR_RA_BADGE_SUFFIX), NULL};
+
     diaSetEnum(diaUIConfig, UICFG_VMODE, vmodeNames);
     diaSetInt(diaUIConfig, UICFG_THEME, thmGetGuiValue());
     diaSetInt(diaUIConfig, UICFG_LANG, lngGetGuiValue());
     diaSetInt(diaUIConfig, UICFG_AUTOSORT, gAutosort);
+    diaSetEnum(diaUIConfig, UICFG_RABADGE, raBadgePos);
+    diaSetInt(diaUIConfig, UICFG_RABADGE, gRABadgeSuffix);
     diaSetInt(diaUIConfig, UICFG_AUTOREFRESH, gAutoRefresh);
     diaSetInt(diaUIConfig, UICFG_NOTIFICATIONS, gEnableNotifications);
     diaSetInt(diaUIConfig, UICFG_COVERART, gEnableArt);
@@ -758,6 +762,7 @@ reselect_video_mode:
             diaGetColor(diaUIConfig, UICFG_SELCOL, gDefaultSelTextColor);
         }
         diaGetInt(diaUIConfig, UICFG_AUTOSORT, &gAutosort);
+        diaGetInt(diaUIConfig, UICFG_RABADGE, &gRABadgeSuffix);
         diaGetInt(diaUIConfig, UICFG_AUTOREFRESH, &gAutoRefresh);
         diaGetInt(diaUIConfig, UICFG_NOTIFICATIONS, &gEnableNotifications);
         diaGetInt(diaUIConfig, UICFG_COVERART, &gEnableArt);

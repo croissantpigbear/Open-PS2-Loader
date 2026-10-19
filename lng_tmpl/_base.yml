@@ -710,3 +710,9 @@ gui_strings:
   string: On in-game reset the selected slot(s) switch to the boot card
 - label: MMCE_SETTINGS
   string: MMCE Settings
+- label: RA_BADGE_POS
+  string: RA mark in game list
+- label: RA_BADGE_PREFIX
+  string: Prefix
+- label: RA_BADGE_SUFFIX
+  string: Suffix

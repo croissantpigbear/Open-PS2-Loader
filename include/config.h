@@ -78,6 +78,7 @@ enum CONFIG_INDEX {
 #define CONFIG_OPL_HDD_GAME_LIST_CACHE  "hdd_game_list_cache"
 #define CONFIG_OPL_EXIT_PATH            "exit_path"
 #define CONFIG_OPL_AUTO_SORT            "autosort"
+#define CONFIG_OPL_RA_BADGE_SUFFIX      "ra_badge_suffix"
 #define CONFIG_OPL_AUTO_REFRESH         "autorefresh"
 #define CONFIG_OPL_DEFAULT_DEVICE       "default_device"
 #define CONFIG_OPL_ENABLE_WRITE         "enable_delete_rename"

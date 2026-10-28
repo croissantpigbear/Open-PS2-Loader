@@ -716,3 +716,7 @@ gui_strings:
   string: Prefix
 - label: RA_BADGE_SUFFIX
   string: Suffix
+- label: UDPFS_GAMES
+  string: UDPFS Games
+- label: UDPFS_HINT
+  string: Games from a PC running udpfs_server. Uses the Network settings.

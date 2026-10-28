@@ -26,6 +26,7 @@
 static int iLinkModLoaded = 0;
 static int mx4sioModLoaded = 0;
 static int hddModLoaded = 0;
+static int udpfsModLoaded = 0;
 static s32 bdmLoadModuleLock;
 int bdmDeviceModeStarted;
 
@@ -104,6 +105,24 @@ static void bdmLoadBlockDeviceModules(void)
         hddLoadModules();
 
         hddModLoaded = 1;
+    }
+
+    /* UDPFS: the block device lives on a PC. It needs the menu's network
+       first (the module opens a lwIP socket at once), so the network is
+       brought up here, with the address from Network settings, whatever
+       the SMB start mode says. Tried once per session: this function runs
+       on every device refresh, and a network without a link takes half a
+       minute to give up. Once loaded, the module keeps looking for the
+       server in the background; the device page appears when it answers. */
+    if (gEnableUDPFS && !udpfsModLoaded) {
+        udpfsModLoaded = 1;
+        LOG("[UDPFS]: network up...\n");
+        if (ethLoadInitModules() == 0) {
+            LOG("[UDPFS_BD_MENU]:\n");
+            sysLoadModuleBuffer(&udpfs_bd_menu_irx, size_udpfs_bd_menu_irx, 0, NULL);
+        } else {
+            LOG("[UDPFS]: no network, UDPFS off for this session\n");
+        }
     }
 
     SignalSema(bdmLoadModuleLock);
@@ -191,6 +210,9 @@ static int bdmNeedsUpdate(item_list_t *itemList)
                 break;
             case BDM_TYPE_ATA:
                 deviceEnabled = gEnableBdmHDD;
+                break;
+            case BDM_TYPE_UDP:
+                deviceEnabled = gEnableUDPFS;
                 break;
             default:
                 deviceEnabled = 0;
@@ -806,6 +828,13 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_ATAD;
         sysLaunchLoaderElf(filename, "BDM_ATA_MODE", irx_size, irx, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask);
+    } else if (!strcmp(bdmCurrentDriver, "udp") && strlen(bdmCurrentDriver) == 3) {
+        /* UDPFS: the network carries the disc. DEV9 is cdvdman's and SMAP
+           is Neutrino's for the whole game, so a game that brings its own
+           (online titles) gets stand-ins, as on an SMB share. */
+        settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
+        settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_SMAP;
+        sysLaunchLoaderElf(filename, "BDM_UDP_MODE", irx_size, irx, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask);
     }
 }
 
@@ -842,6 +871,8 @@ static int bdmGetTextId(item_list_t *itemList)
         mode = _STR_MX4SIO_GAMES;
     else if (!strcmp(pDeviceData->bdmDriver, "ata") && strlen(pDeviceData->bdmDriver) == 3)
         mode = _STR_HDD_GAMES;
+    else if (!strcmp(pDeviceData->bdmDriver, "udp") && strlen(pDeviceData->bdmDriver) == 3)
+        mode = _STR_UDPFS_GAMES;
 
     return mode;
 }
@@ -860,6 +891,8 @@ static int bdmGetIconId(item_list_t *itemList)
         mode = MX4SIO_ICON;
     else if (!strcmp(pDeviceData->bdmDriver, "ata") && strlen(pDeviceData->bdmDriver) == 3)
         mode = HDD_BD_ICON;
+    else if (!strcmp(pDeviceData->bdmDriver, "udp") && strlen(pDeviceData->bdmDriver) == 3)
+        mode = ETH_ICON;
 
     return mode;
 }
@@ -1063,7 +1096,9 @@ int bdmUpdateDeviceData(item_list_t *itemList)
         else if (!strcmp(pDeviceData->bdmDriver, "ata") && strlen(pDeviceData->bdmDriver) == 3) {
             pDeviceData->bdmDeviceType = BDM_TYPE_ATA;
             itemList->flags = MODE_FLAG_COMPAT_DMA;
-        } else
+        } else if (!strcmp(pDeviceData->bdmDriver, "udp") && strlen(pDeviceData->bdmDriver) == 3)
+            pDeviceData->bdmDeviceType = BDM_TYPE_UDP;
+        else
             pDeviceData->bdmDeviceType = BDM_TYPE_UNKNOWN;
 
         // If the device is backed by the ATA driver then get the supported LBA size for the drive.

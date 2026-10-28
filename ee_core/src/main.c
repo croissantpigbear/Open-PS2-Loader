@@ -58,6 +58,8 @@ static int eecoreInit(int argc, char **argv)
         config->GameMode = DISC_MODE;
     else if (!_strncmp(config->GameModeDesc, "MMCE_MODE", 9))
         config->GameMode = MMCE_MODE;
+    else if (!_strncmp(config->GameModeDesc, "BDM_UDP_MODE", 12))
+        config->GameMode = BDM_UDP_MODE;
     DPRINTF("Game Mode = %d %s\n", config->GameMode, config->GameModeDesc);
 
     EnableDebug = config->EnableDebug;

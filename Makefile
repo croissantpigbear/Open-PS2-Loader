@@ -92,6 +92,10 @@ IOP_OBJS =	iomanx.o filexio.o ps2fs.o usbd.o bdmevent.o \
 IOP_OBJS += raudp.o
 # The same under POPS: written to POPS/ as MODULE_9.IRX at a PS1 launch
 IOP_OBJS += rapops.o
+# UDPFS: games from a PC running Neutrino's udpfs_server. The block device
+# for the menu (over the menu's lwIP), Neutrino's SMAP driver, ministack and
+# block device for the game, and the telemetry sender for that stack.
+IOP_OBJS += udpfs_bd_menu.o udpfs_smap.o udpfs_mstack.o udpfs_bd.o raudp_ms.o
 
 EECORE_OBJS = ee_core.o ioprp.o util.o \
 		udnl.o imgdrv.o eesync.o \
@@ -346,6 +350,12 @@ clean:	download_lwNBD
 	$(MAKE) -C modules/debug/udptty-ingame clean
 	echo " -raudp"
 	$(MAKE) -C modules/network/raudp clean
+	$(MAKE) -C modules/network/raudp MS=1 clean
+	echo " -udpfs"
+	$(MAKE) -C modules/network/udpfs/smap clean
+	$(MAKE) -C modules/network/udpfs/ministack clean
+	$(MAKE) -C modules/network/udpfs/udpfs clean
+	$(MAKE) -C modules/network/udpfs/udpfs MENU=1 clean
 	echo " -rapops"
 	$(MAKE) -C modules/network/rapops clean
 	$(MAKE) -C modules/network/rapull clean
@@ -676,6 +686,57 @@ modules/network/raudp/raudp.irx: $(RAUDP_DEPS) | modules/network/raudp
 
 $(EE_ASM_DIR)raudp.c: modules/network/raudp/raudp.irx | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ raudp_irx
+
+# The same sender for UDPFS games: Neutrino's SMAP driver and ministack
+UDPFS_INC_DEPS := $(wildcard modules/network/udpfs/include/*.h)
+
+modules/network/raudp/raudp_ms.irx: $(RAUDP_DEPS) $(UDPFS_INC_DEPS) | modules/network/raudp
+	$(MAKE) -C modules/network/raudp MS=1 clean
+	$(MAKE) -C modules/network/raudp MS=1 all
+
+$(EE_ASM_DIR)raudp_ms.c: modules/network/raudp/raudp_ms.irx | $(EE_ASM_DIR)
+	$(BIN2C) $< $@ raudp_ms_irx
+
+# UDPFS (modules/network/udpfs): Neutrino's network modules. Clean, then
+# build, as two steps: "rebuild" runs both at once under -j, and the two
+# udpfs variants share a directory.
+UDPFS_SMAP_DEPS := $(wildcard modules/network/udpfs/smap/*.c) $(wildcard modules/network/udpfs/smap/*.h) \
+                   modules/network/udpfs/smap/imports.lst modules/network/udpfs/smap/exports.tab \
+                   modules/network/udpfs/smap/Makefile $(UDPFS_INC_DEPS)
+UDPFS_MSTACK_DEPS := $(wildcard modules/network/udpfs/ministack/*.c) $(wildcard modules/network/udpfs/ministack/*.h) \
+                     modules/network/udpfs/ministack/imports.lst modules/network/udpfs/ministack/exports.tab \
+                     modules/network/udpfs/ministack/Makefile $(UDPFS_INC_DEPS)
+UDPFS_BD_DEPS := $(wildcard modules/network/udpfs/udpfs/*.c) $(wildcard modules/network/udpfs/udpfs/*.h) \
+                 modules/network/udpfs/udpfs/imports.lst modules/network/udpfs/udpfs/exports.tab \
+                 modules/network/udpfs/udpfs/Makefile $(UDPFS_INC_DEPS)
+
+modules/network/udpfs/smap/smap.irx: $(UDPFS_SMAP_DEPS)
+	$(MAKE) -C modules/network/udpfs/smap clean
+	$(MAKE) -C modules/network/udpfs/smap all
+
+$(EE_ASM_DIR)udpfs_smap.c: modules/network/udpfs/smap/smap.irx | $(EE_ASM_DIR)
+	$(BIN2C) $< $@ udpfs_smap_irx
+
+modules/network/udpfs/ministack/ministack.irx: $(UDPFS_MSTACK_DEPS)
+	$(MAKE) -C modules/network/udpfs/ministack clean
+	$(MAKE) -C modules/network/udpfs/ministack all
+
+$(EE_ASM_DIR)udpfs_mstack.c: modules/network/udpfs/ministack/ministack.irx | $(EE_ASM_DIR)
+	$(BIN2C) $< $@ udpfs_mstack_irx
+
+modules/network/udpfs/udpfs/udpfs_bd.irx: $(UDPFS_BD_DEPS)
+	$(MAKE) -C modules/network/udpfs/udpfs clean
+	$(MAKE) -C modules/network/udpfs/udpfs all
+
+$(EE_ASM_DIR)udpfs_bd.c: modules/network/udpfs/udpfs/udpfs_bd.irx | $(EE_ASM_DIR)
+	$(BIN2C) $< $@ udpfs_bd_irx
+
+modules/network/udpfs/udpfs/udpfs_bd_menu.irx: $(UDPFS_BD_DEPS)
+	$(MAKE) -C modules/network/udpfs/udpfs MENU=1 clean
+	$(MAKE) -C modules/network/udpfs/udpfs MENU=1 all
+
+$(EE_ASM_DIR)udpfs_bd_menu.c: modules/network/udpfs/udpfs/udpfs_bd_menu.irx | $(EE_ASM_DIR)
+	$(BIN2C) $< $@ udpfs_bd_menu_irx
 
 # PS1 under POPS: the snapshot read from the IOP over the SIF
 RAPULL_DEPS := $(wildcard modules/network/rapull/*.c) $(wildcard modules/network/common/*.h) \

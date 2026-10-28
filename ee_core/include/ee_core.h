@@ -77,6 +77,10 @@ enum GAME_MODE {
        serves cdrom0:. */
     DISC_MODE,
     MMCE_MODE,
+    /* UDPFS: BDM over the network, the block device on a PC running
+       Neutrino's udpfs_server. The network belongs to Neutrino's SMAP
+       driver and ministack for the whole game. */
+    BDM_UDP_MODE,
 };
 
 extern int EnableDebug;

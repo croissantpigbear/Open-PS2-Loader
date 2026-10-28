@@ -154,6 +154,7 @@ int gPs1UsbExfat;
 int gEnableILK;
 int gEnableMX4SIO;
 int gEnableBdmHDD;
+int gEnableUDPFS;
 int gAutosort;
 int gRABadgeSuffix;
 int gAutoRefresh;
@@ -996,6 +997,7 @@ static void _loadConfig()
             configGetInt(configOPL, CONFIG_OPL_ENABLE_ILINK, &gEnableILK);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_MX4SIO, &gEnableMX4SIO);
             configGetInt(configOPL, CONFIG_OPL_ENABLE_BDMHDD, &gEnableBdmHDD);
+            configGetInt(configOPL, CONFIG_OPL_ENABLE_UDPFS, &gEnableUDPFS);
             configGetInt(configOPL, CONFIG_OPL_SFX, &gEnableSFX);
             configGetInt(configOPL, CONFIG_OPL_BOOT_SND, &gEnableBootSND);
             configGetInt(configOPL, CONFIG_OPL_BGM, &gEnableBGM);
@@ -1175,6 +1177,7 @@ static void _saveConfig()
         configSetInt(configOPL, CONFIG_OPL_ENABLE_ILINK, gEnableILK);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_MX4SIO, gEnableMX4SIO);
         configSetInt(configOPL, CONFIG_OPL_ENABLE_BDMHDD, gEnableBdmHDD);
+        configSetInt(configOPL, CONFIG_OPL_ENABLE_UDPFS, gEnableUDPFS);
         configSetInt(configOPL, CONFIG_OPL_SFX, gEnableSFX);
         configSetInt(configOPL, CONFIG_OPL_BOOT_SND, gEnableBootSND);
         configSetInt(configOPL, CONFIG_OPL_BGM, gEnableBGM);
@@ -1827,6 +1830,7 @@ static void setDefaults(void)
     gEnableILK = 0;
     gEnableMX4SIO = 0;
     gEnableBdmHDD = 0;
+    gEnableUDPFS = 0;
 
     frameCounter = 0;
 

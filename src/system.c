@@ -384,16 +384,18 @@ void sysExecExit(void)
 }
 
 // Module bits
-#define CORE_IRX_USB    0x01
-#define CORE_IRX_ETH    0x02
-#define CORE_IRX_SMB    0x04
-#define CORE_IRX_HDD    0x08
-#define CORE_IRX_VMC    0x10
-#define CORE_IRX_DEBUG  0x20
-#define CORE_IRX_DECI2  0x40
-#define CORE_IRX_ILINK  0x80
-#define CORE_IRX_MX4SIO 0x100
-#define CORE_IRX_MMCE   0x200
+#define CORE_IRX_USB      0x01
+#define CORE_IRX_ETH      0x02
+#define CORE_IRX_SMB      0x04
+#define CORE_IRX_HDD      0x08
+#define CORE_IRX_VMC      0x10
+#define CORE_IRX_DEBUG    0x20
+#define CORE_IRX_DECI2    0x40
+#define CORE_IRX_ILINK    0x80
+#define CORE_IRX_MX4SIO   0x100
+#define CORE_IRX_MMCE     0x200
+#define CORE_IRX_UDPFS    0x400 /* Neutrino SMAP + ministack + UDPFS block device */
+#define CORE_IRX_RAUDP_MS 0x800 /* RA telemetry on that stack */
 
 typedef struct
 {
@@ -485,6 +487,8 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
         modules |= CORE_IRX_HDD;
     else if (!strcmp(mode_str, "MMCE_MODE"))
         modules |= CORE_IRX_MMCE;
+    else if (!strcmp(mode_str, "BDM_UDP_MODE"))
+        modules |= CORE_IRX_UDPFS;
 
     /* RA: telemetry goes over the network whatever the boot device, so
        the network modules follow the game even off USB. Only when there
@@ -495,8 +499,15 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
        now: every launch leg calls sbLoadWatchList first, and that drops
        the list when the network is unusable, so a game launched without
        telemetry loads exactly what a build without RA would. */
-    if (GetWatchCount() > 0)
-        modules |= CORE_IRX_ETH;
+    if (GetWatchCount() > 0) {
+        /* UDPFS: the NIC already runs Neutrino's stack for the disc, and
+           OPL's SMAP cannot share it. The telemetry goes out on that stack
+           instead, for about 9 KB rather than 57. */
+        if (modules & CORE_IRX_UDPFS)
+            modules |= CORE_IRX_RAUDP_MS;
+        else
+            modules |= CORE_IRX_ETH;
+    }
 
     irxtable = (irxtab_t *)ModuleStorage;
     irxptr_tab = (irxptr_t *)((unsigned char *)irxtable + sizeof(irxtab_t));
@@ -593,6 +604,20 @@ static unsigned int sendIrxKernelRAM(const char *startup, const char *mode_str, 
     if (modules & CORE_IRX_ETH) {
         irxptr_tab[modcount].info = size_raudp_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_RAUDP);
         irxptr_tab[modcount++].ptr = (void *)&raudp_irx;
+    }
+
+    /* UDPFS: about 18 KB for the disc, 9 KB more with a watch list. */
+    if (modules & CORE_IRX_UDPFS) {
+        irxptr_tab[modcount].info = size_udpfs_smap_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_UDPFS_SMAP);
+        irxptr_tab[modcount++].ptr = (void *)&udpfs_smap_irx;
+        irxptr_tab[modcount].info = size_udpfs_mstack_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_UDPFS_MSTACK);
+        irxptr_tab[modcount++].ptr = (void *)&udpfs_mstack_irx;
+        irxptr_tab[modcount].info = size_udpfs_bd_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_UDPFS_BD);
+        irxptr_tab[modcount++].ptr = (void *)&udpfs_bd_irx;
+    }
+    if (modules & CORE_IRX_RAUDP_MS) {
+        irxptr_tab[modcount].info = size_raudp_ms_irx | SET_OPL_MOD_ID(OPL_MODULE_ID_RAUDP_MS);
+        irxptr_tab[modcount++].ptr = (void *)&raudp_ms_irx;
     }
 
     if (modules & CORE_IRX_VMC) {

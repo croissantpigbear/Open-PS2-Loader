@@ -51,6 +51,13 @@ enum OPL_MODULE_ID {
     OPL_MODULE_ID_MMCEDRV,
     OPL_MODULE_ID_MMCEIGR,
 
+    // UDPFS mode: Neutrino's SMAP driver, ministack and UDPFS block
+    // device, and the telemetry sender built for that stack.
+    OPL_MODULE_ID_UDPFS_SMAP,
+    OPL_MODULE_ID_UDPFS_MSTACK,
+    OPL_MODULE_ID_UDPFS_BD,
+    OPL_MODULE_ID_RAUDP_MS,
+
     OPL_MODULE_ID_COUNT
 };
 

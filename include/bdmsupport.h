@@ -22,6 +22,7 @@ typedef struct
 #define BDM_TYPE_ILINK   1
 #define BDM_TYPE_SDC     2
 #define BDM_TYPE_ATA     3
+#define BDM_TYPE_UDP     4 /* UDPFS server on the network (udpfs_bd_menu.irx) */
 
 typedef struct
 {

@@ -6,6 +6,19 @@ I_GetSystemTime
 I_SysClock2USec
 thbase_IMPORTS_end
 
+#ifdef RAUDP_MINISTACK
+smap_IMPORTS_start
+I_SMAPGetMACAddress
+I_smap_transmit
+I_smap_fifo_read
+smap_IMPORTS_end
+
+mstack_IMPORTS_start
+I_udp_bind
+I_udp_packet_init
+I_udp_packet_send_ll
+mstack_IMPORTS_end
+#else
 smap_driver_IMPORTS_start
 I_SMAPSendPacket
 smap_driver_IMPORTS_end
@@ -20,6 +33,7 @@ I_lwip_recvfrom
 I_lwip_setsockopt
 I_etharp_lookup_mac
 ps2ip_IMPORTS_end
+#endif
 
 loadcore_IMPORTS_start
 I_RegisterLibraryEntries

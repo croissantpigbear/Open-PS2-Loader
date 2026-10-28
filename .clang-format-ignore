@@ -7,3 +7,16 @@
 ./modules/network/ps2ips-ra/ps2ips.c
 ./modules/network/smbman-ra
 ./modules/usb/usbd-ra
+./modules/network/udpfs/smap
+./modules/network/udpfs/ministack
+./modules/network/udpfs/include
+./modules/network/udpfs/udpfs/udprdma.c
+./modules/network/udpfs/udpfs/udprdma.h
+./modules/network/udpfs/udpfs/udprdma_packet.h
+./modules/network/udpfs/udpfs/udpfs_core.c
+./modules/network/udpfs/udpfs/udpfs_core.h
+./modules/network/udpfs/udpfs/udpfs_packet.h
+./modules/network/udpfs/udpfs/udpfs_bd.c
+./modules/network/udpfs/udpfs/main.c
+./modules/network/udpfs/udpfs/main.h
+./modules/network/udpfs/udpfs/irx_imports.h

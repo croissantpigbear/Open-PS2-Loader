@@ -160,7 +160,9 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
             LoadOPLModule(OPL_MODULE_ID_SMSUTILS, 0, 0, NULL);
         }
 
-        if (config->GameMode != ETH_MODE) {
+        /* ETH mode has them already; UDPFS mode has another stack on
+           the NIC and its own telemetry sender (raudp_ms, below). */
+        if (config->GameMode != ETH_MODE && config->GameMode != BDM_UDP_MODE) {
             LoadOPLModule(OPL_MODULE_ID_SMSTCPIP, 0, 0, NULL);
             LoadOPLModule(OPL_MODULE_ID_SMAP, 0, g_ipconfig_len, g_ipconfig);
         }
@@ -198,6 +200,22 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
         case MMCE_MODE:
             LoadOPLModule(OPL_MODULE_ID_MMCEDRV, 0, 0, NULL);
             break;
+        case BDM_UDP_MODE: {
+            /* Neutrino's stack, in import order: SMAP takes DEV9 from
+               OPL's cdvdman, ministack takes SMAP, the block device takes
+               both plus BDM from cdvdman. ministack needs the address the
+               menu had; it answers ARP for it, and the UDPFS server and
+               xeRAbora reply to it. udpfs_bd finds the server by broadcast
+               and registers the disk before it returns. */
+            char ipArg[3 + 16];
+
+            _strcpy(ipArg, "ip=");
+            _strcpy(&ipArg[3], config->g_ps2_ip);
+            LoadOPLModule(OPL_MODULE_ID_UDPFS_SMAP, 0, 0, NULL);
+            LoadOPLModule(OPL_MODULE_ID_UDPFS_MSTACK, 0, strlen(ipArg) + 1, ipArg);
+            LoadOPLModule(OPL_MODULE_ID_UDPFS_BD, 0, 0, NULL);
+            break;
+        }
     };
 
     /* RetroAchievements telemetry module, loaded last because it imports
@@ -238,10 +256,10 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
             for (k = 0; k < g_ipconfig_len && k < IPCONFIG_MAX_LEN; k++)
                 args[n + k] = g_ipconfig[k];
 
-            LoadOPLModule(OPL_MODULE_ID_RAUDP, 0, n + k, args);
+            LoadOPLModule(config->GameMode == BDM_UDP_MODE ? OPL_MODULE_ID_RAUDP_MS : OPL_MODULE_ID_RAUDP, 0, n + k, args);
         } else {
             ra_snap_iop = 0;
-            LoadOPLModule(OPL_MODULE_ID_RAUDP, 0, 0, NULL);
+            LoadOPLModule(config->GameMode == BDM_UDP_MODE ? OPL_MODULE_ID_RAUDP_MS : OPL_MODULE_ID_RAUDP, 0, 0, NULL);
         }
     }
 }

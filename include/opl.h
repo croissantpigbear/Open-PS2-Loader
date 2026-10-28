@@ -132,6 +132,7 @@ extern int gPs1UsbExfat;
 extern int gEnableILK;
 extern int gEnableMX4SIO;
 extern int gEnableBdmHDD;
+extern int gEnableUDPFS;
 
 extern int gAutosort;
 /* RA: 0 = "RA " before the game name, 1 = " [RA]" after it, so the

@@ -44,6 +44,15 @@
   there (struct ra_event), where the VBLANK handler picks it up: a
   notice over the game, or the in-game reset.
 
+  The UDPFS build (RAUDP_MINISTACK, raudp_ms.irx). A game that runs from
+  a UDPFS server has no lwIP and no OPL SMAP driver: the network belongs
+  to Neutrino's SMAP driver and its ministack (modules/network/udpfs).
+  This build sends the same frames through smap_transmit() instead of
+  SMAPSendPacket(), and replaces both receive roads with one: a ministack
+  UDP port, whose callback queues the PC's messages for this thread.
+  Discovery broadcasts through ministack and takes the PC's MAC straight
+  from the reply's Ethernet header. The wire format does not change.
+
   Licenced under Academic Free License version 3.0, like ee_core.
 */
 
@@ -52,12 +61,20 @@
 #include <thbase.h>
 #include <sifman.h>
 #include <smapregs.h>
+#ifdef RAUDP_MINISTACK
+#include "ministack_udp.h"
+#include "smap.h"
+/* Same frame, other driver. smap_transmit() waits for room itself; the
+   busy test below keeps us from getting there with a game to feed. */
+#define SMAPSendPacket(frame, len) smap_transmit((void *)(frame), (uint16_t)(len), NULL, 0)
+#else
 #include "smap_tx.h"
 #include "smstcpip.h" /* lwip_*: used only during discovery */
-#include "ra_snap.h"
 
 /* Added to SMSTCPIP (etharp.c), export 42. Not part of smstcpip.h. */
 int etharp_lookup_mac(unsigned int ipaddr, unsigned char *mac_out);
+#endif
+#include "ra_snap.h"
 
 #define MODNAME "raudp"
 IRX_ID(MODNAME, 15, 0);
@@ -97,7 +114,9 @@ static u8 ra_dst_mac[6];
 #define RA_HDR_LEN   (RA_ETH_HLEN + RA_IP_HLEN + RA_UDP_HLEN)
 #define RA_FRAME_LEN (RA_HDR_LEN + RA_PAYLOAD)
 
-static u8 ra_frame[RA_FRAME_LEN] __attribute__((aligned(16)));
+/* +4: both drivers copy whole words to the FIFO, so up to three bytes
+   past the frame are read. */
+static u8 ra_frame[RA_FRAME_LEN + 4] __attribute__((aligned(16)));
 static u8 *ra_payload = &ra_frame[RA_HDR_LEN];
 
 /* Looking for the PC while a game runs. Off on a share: both roads to
@@ -143,8 +162,10 @@ static struct ra_event ra_event __attribute__((aligned(16)));
 static u32 ra_hb_rx = 0;  /* datagrams that reached ra_poll_pc */
 static u32 ra_hb_rau = 0; /* unlock notices among them */
 
+#ifndef RAUDP_MINISTACK
 /* Discovery socket, kept open for the PC's messages. */
 static int ra_sock = -1;
+#endif
 
 /* ---- Packet header ---------------------------------------------------
    Text header, then the raw snapshot bytes. Fields are fixed width so
@@ -362,6 +383,39 @@ static int ra_fmt_ip(char *dst, u32 ip)
     return pos;
 }
 
+#ifdef RAUDP_MINISTACK
+/* "a.b.c.d" to network byte order in a u32 (a in the low byte), as
+   inet_addr() returns it; 0 on anything else. ee_core always writes the
+   canonical form. The lwIP build keeps inet_addr(). */
+static u32 ra_parse_ip(const char *s)
+{
+    u32 ip = 0, part = 0;
+    int dots = 0, digits = 0;
+
+    for (;; s++) {
+        if (*s >= '0' && *s <= '9') {
+            part = part * 10 + (u32)(*s - '0');
+            if (part > 255 || ++digits > 3)
+                return 0;
+        } else if (*s == '.' || *s == '\0') {
+            if (digits == 0)
+                return 0;
+            ip |= part << (8 * dots);
+            if (*s == '\0')
+                break;
+            if (++dots > 3)
+                return 0;
+            part = 0;
+            digits = 0;
+        } else {
+            return 0;
+        }
+    }
+
+    return dots == 3 ? ip : 0;
+}
+#endif
+
 /* IPv4 header checksum: one's complement sum of 16-bit words. */
 static u16 ra_ip_checksum(const u8 *hdr, int len)
 {
@@ -409,6 +463,11 @@ static void ra_frame_init(void)
     for (i = 0; i < 6; i++)
         e[i] = ra_dst_mac[i];
 
+#ifdef RAUDP_MINISTACK
+    (void)mac_hi;
+    (void)mac_lo;
+    SMAPGetMACAddress(&e[6]);
+#else
     mac_hi = SMAP_EMAC3_GET32(SMAP_R_EMAC3_ADDR_HI);
     mac_lo = SMAP_EMAC3_GET32(SMAP_R_EMAC3_ADDR_LO);
     e[6] = (u8)(mac_hi >> 8);
@@ -417,6 +476,7 @@ static void ra_frame_init(void)
     e[9] = (u8)(mac_lo >> 16);
     e[10] = (u8)(mac_lo >> 8);
     e[11] = (u8)mac_lo;
+#endif
 
     e[12] = 0x08; /* EtherType IPv4 */
     e[13] = 0x00;
@@ -505,7 +565,7 @@ static int ra_tx_busy(void)
    the telemetry frame, lengths and checksum redone. */
 #define RA_CTL_MAX 64
 
-static u8 ra_ctl_frame[RA_HDR_LEN + RA_CTL_MAX] __attribute__((aligned(16)));
+static u8 ra_ctl_frame[RA_HDR_LEN + RA_CTL_MAX + 4] __attribute__((aligned(16)));
 
 static void ra_ctl_send(const char *msg, int len)
 {
@@ -714,6 +774,142 @@ static int ra_snap_pending(void)
 /* Time spent in discovery. Subtracted from the start-up hold-off. */
 static u32 ra_disc_us = 0;
 
+#ifdef RAUDP_MINISTACK
+/* ---- The ministack road ------------------------------------------------
+   One UDP port on ministack carries everything from the PC: the RAO1
+   answer to discovery, then RAU1 and RAR1. The callback runs in the SMAP
+   driver's interrupt thread, between the UDPFS client's packets, so it
+   only copies: the RAO1 sender goes into ra_dst_*, every other message
+   into a small ring this module's thread empties once per period. */
+
+#define RA_MS_SLOTS   4
+#define RA_MS_MSG_MAX 128 /* an unlock notice is a few dozen bytes, padded to 128 */
+
+static udp_socket_t *ra_ms_sock = NULL;
+
+/* Discovery: filled by the callback, read by ra_discover(). */
+static volatile int ra_ms_found = 0;
+static u32 ra_ms_ip = 0;
+static u8 ra_ms_mac[6];
+
+static char ra_ms_msg[RA_MS_SLOTS][RA_MS_MSG_MAX + 1];
+static int ra_ms_len[RA_MS_SLOTS];
+static volatile u32 ra_ms_head = 0; /* written by the callback */
+static volatile u32 ra_ms_tail = 0; /* written by the thread */
+
+/* Read buffer: from frame offset 40, the 4-byte boundary just before the
+   payload at 42 (smap_fifo_read seeks the FIFO, which wants words). */
+static u8 ra_ms_rx[RA_MS_MSG_MAX + 4] __attribute__((aligned(4)));
+
+static int ra_ms_cb(udp_socket_t *sock, void *arg, const uint8_t *hdr, uint16_t hdr_len)
+{
+    int up, n;
+    const char *pay = (const char *)&ra_ms_rx[2];
+
+    (void)sock;
+    (void)arg;
+
+    if (hdr_len < RA_HDR_LEN)
+        return -1;
+
+    up = (((int)hdr[38] << 8) | hdr[39]) - RA_UDP_HLEN;
+    if (up < 5)
+        return -1;
+    n = up > RA_MS_MSG_MAX ? RA_MS_MSG_MAX : up;
+    smap_fifo_read(40, ra_ms_rx, (u32)((n + 2 + 3) & ~3));
+
+    if (pay[0] != 'R' || pay[1] != 'A' || pay[3] != '1')
+        return 0;
+
+    if (pay[2] == 'O') {
+        if (!ra_ms_found) {
+            int i;
+
+            /* Network byte order in a u32, as ra_dst_ip keeps it. */
+            ra_ms_ip = (u32)hdr[26] | ((u32)hdr[27] << 8) | ((u32)hdr[28] << 16) | ((u32)hdr[29] << 24);
+            for (i = 0; i < 6; i++)
+                ra_ms_mac[i] = hdr[6 + i];
+            ra_ms_found = 1;
+        }
+        return 0;
+    }
+
+    if (ra_ms_head - ra_ms_tail < RA_MS_SLOTS) {
+        u32 k = ra_ms_head % RA_MS_SLOTS;
+        int i;
+
+        for (i = 0; i < n; i++)
+            ra_ms_msg[k][i] = pay[i];
+        ra_ms_msg[k][n] = '\0';
+        ra_ms_len[k] = n;
+        ra_ms_head++;
+    }
+
+    return 0;
+}
+
+/* The RAP1 broadcast as one buffer: ministack's driver copies header and
+   payload to the FIFO separately and the header alone is 42 bytes, which
+   would leave the payload off the word grid. Sent whole instead. */
+static struct
+{
+    eth_header_t eth;
+    ip_header_t ip;
+    udp_header_t udp;
+    u8 payload[48 + 4];
+} __attribute__((packed, aligned(4))) ra_ms_bcast;
+
+/* Same contract as the lwIP version below: broadcasts "RAP1 <own-ip>
+   <port>", waits for "RAO1", repeats for ever, returns 1 once the PC's
+   IP and MAC are known, 0 only if the port cannot be had. */
+static int ra_discover(void)
+{
+    char *req = (char *)ra_ms_bcast.payload;
+    int len, tries = 0, w;
+
+    ra_ms_sock = udp_bind(RA_SRC_PORT, ra_ms_cb, NULL);
+    if (ra_ms_sock == NULL)
+        return 0;
+
+    udp_packet_init((udp_packet_t *)&ra_ms_bcast, 0xFFFFFFFF, RA_DST_PORT);
+
+    req[0] = 'R';
+    req[1] = 'A';
+    req[2] = 'P';
+    req[3] = '1';
+    req[4] = ' ';
+    len = 5 + ra_fmt_ip(&req[5], ra_src_ip);
+    req[len++] = ' ';
+    ra_fmt((u8 *)&req[len], RA_SRC_PORT, 5);
+    len += 5;
+    req[len] = '\0';
+
+    for (;;) {
+        udp_packet_send_ll(ra_ms_sock, (udp_packet_t *)&ra_ms_bcast, (uint16_t)len, NULL, 0);
+
+        for (w = 0; w < RA_DISC_POLLS; w++) {
+            DelayThread(RA_DISC_POLL_US);
+            ra_disc_us += RA_DISC_POLL_US;
+
+            if (ra_ms_found && ra_ms_ip != 0 && ra_ms_ip != 0xFFFFFFFF) {
+                int i;
+
+                ra_dst_ip = ra_ms_ip;
+                for (i = 0; i < 6; i++)
+                    ra_dst_mac[i] = ra_ms_mac[i];
+                return 1;
+            }
+        }
+
+        tries++;
+        if (tries >= RA_DISC_FAST) {
+            DelayThread(RA_DISC_SLOW_US);
+            if (ra_disc_us < 0xF0000000)
+                ra_disc_us += RA_DISC_SLOW_US;
+        }
+    }
+}
+#else
 /* Broadcasts "RAP1 <own-ip> <port>" and waits for "RAO1".
 
    Own address is in the text because the PC client may run inside a
@@ -796,6 +992,7 @@ static int ra_discover(void)
         }
     }
 }
+#endif /* RAUDP_MINISTACK */
 
 /* ---- Messages from the PC ---------------------------------------------- */
 
@@ -890,6 +1087,18 @@ static void ra_handle_pc(char *rx, int got)
     ra_ctl_send(ack, n);
 }
 
+#ifdef RAUDP_MINISTACK
+/* Messages the ministack callback queued since the last period. */
+static void ra_poll_pc(void)
+{
+    while (ra_ms_tail != ra_ms_head) {
+        u32 k = ra_ms_tail % RA_MS_SLOTS;
+
+        ra_handle_pc(ra_ms_msg[k], ra_ms_len[k]);
+        ra_ms_tail++;
+    }
+}
+#else
 /* The lwIP road: worked at boot, dead in play. Kept for the boot
    window; costs one non-blocking call per period. */
 static void ra_poll_pc(void)
@@ -981,6 +1190,7 @@ static void ra_drain_rx(void)
         ra_rx_bdi++;
     }
 }
+#endif /* RAUDP_MINISTACK */
 
 /* Every ten seconds: "RAH1 <datagrams> <unlocks> 000000 00000000 0".
    No heartbeat means the send path is down; zero datagrams means nothing
@@ -1063,10 +1273,16 @@ static void ra_thread(void *arg)
             ra_send_one();
             idle = 0;
         }
+#ifdef RAUDP_MINISTACK
+        /* ministack drains the controller; only the queue is ours. */
+        if (iter % RA_IDLE_TICKS == 0)
+            ra_poll_pc();
+#else
         if (ra_rx_in_game && iter % RA_IDLE_TICKS == 0) {
             ra_drain_rx();
             ra_poll_pc();
         }
+#endif
         if (++iter % RA_HEARTBEAT_TICKS == 0)
             ra_heartbeat();
         DelayThread(RA_POLL_US);
@@ -1107,11 +1323,15 @@ int _start(int argc, char *argv[])
     }
 
     if (argc >= 3 && argv[2] != NULL)
+#ifdef RAUDP_MINISTACK
+        ra_src_ip = ra_parse_ip(argv[2]);
+#else
         ra_src_ip = inet_addr(argv[2]);
+#endif
 
     /* Without an own address there is nothing to put in the discovery
        request or the IP header. Staying silent beats sending garbage. */
-    if (ra_src_ip == 0 || ra_src_ip == INADDR_BROADCAST)
+    if (ra_src_ip == 0 || ra_src_ip == 0xFFFFFFFF)
         return MODULE_RESIDENT_END;
 
     RegisterLibraryEntries(&_exp_raudp);

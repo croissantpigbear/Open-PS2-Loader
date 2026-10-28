@@ -128,8 +128,15 @@ IMPORT_BIN2C(smb_mcemu_irx);
 IMPORT_BIN2C(smb_cdvdman_irx);
 
 IMPORT_BIN2C(smbinit_irx);
-IMPORT_BIN2C(raudp_irx);  // RA: telemetry gateway (bypass)
-IMPORT_BIN2C(rapops_irx); // RA: the same under POPS, MODULE_9.IRX
+IMPORT_BIN2C(raudp_irx);    // RA: telemetry gateway (bypass)
+IMPORT_BIN2C(rapops_irx);   // RA: the same under POPS, MODULE_9.IRX
+IMPORT_BIN2C(raudp_ms_irx); // RA: the same on Neutrino's SMAP + ministack (UDPFS games)
+
+// UDPFS: games from a PC running Neutrino's udpfs_server
+IMPORT_BIN2C(udpfs_bd_menu_irx); // menu: the block device over the menu's lwIP
+IMPORT_BIN2C(udpfs_smap_irx);    // in-game: Neutrino SMAP driver
+IMPORT_BIN2C(udpfs_mstack_irx);  // in-game: Neutrino ministack
+IMPORT_BIN2C(udpfs_bd_irx);      // in-game: the block device on ministack
 
 IMPORT_BIN2C(smbman_irx);
 

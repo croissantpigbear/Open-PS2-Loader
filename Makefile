@@ -682,7 +682,8 @@ RAUDP_DEPS := $(wildcard modules/network/raudp/*.c) $(wildcard modules/network/r
               modules/network/raudp/Makefile
 
 modules/network/raudp/raudp.irx: $(RAUDP_DEPS) | modules/network/raudp
-	$(MAKE) -C modules/network/raudp rebuild
+	$(MAKE) -C modules/network/raudp clean
+	$(MAKE) -C modules/network/raudp all
 
 $(EE_ASM_DIR)raudp.c: modules/network/raudp/raudp.irx | $(EE_ASM_DIR)
 	$(BIN2C) $< $@ raudp_irx

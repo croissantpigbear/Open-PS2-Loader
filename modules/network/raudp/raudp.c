@@ -555,9 +555,19 @@ static void ra_frame_init(void)
    busy-wait on it. */
 static int ra_tx_busy(void)
 {
+#ifdef RAUDP_MINISTACK
+    /* Not a question for this driver. Neutrino's SMAP runs TX channel 0
+       in multi mode (TXREQ0_MULTI) with a queue of descriptors, where
+       GNP_0 does not drop between frames: asking it skipped every frame,
+       telemetry and control alike, for good. smap_transmit() queues the
+       frame, and when the queue is full it sleeps rather than spins, so
+       the game is not held up either way. */
+    return 0;
+#else
     USE_SMAP_EMAC3_REGS;
 
     return (SMAP_EMAC3_GET(SMAP_R_EMAC3_TxMODE0) & SMAP_E3_TX_GNP_0) != 0;
+#endif
 }
 
 /* ---- Control messages to the PC: down the raw telemetry path, not lwIP,

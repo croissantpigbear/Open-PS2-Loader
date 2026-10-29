@@ -254,6 +254,15 @@ int smap_transmit(void *header, uint16_t headersize, const void *data, uint16_t 
     while (1) {
         WaitSema(tx_sema);
         int r = HandleTxReqs(&SmapDriverData, header, headersize, data, datasize);
+        /* OPL change: no room means frames are still queued. Ask the MAC
+         * for them again before sleeping, rather than leave them to the
+         * next successful send: with TX channel 0 in multi mode a GNP
+         * written while the MAC was busy may not cover frames queued after
+         * it, and then nothing moves the queue but new traffic. */
+        if (r < 0 && SmapDriverData.NumPacketsInTx > 0) {
+            USE_SMAP_EMAC3_REGS;
+            SMAP_EMAC3_SET32(SMAP_R_EMAC3_TxMODE0, SMAP_E3_TX_GNP_0);
+        }
         SignalSema(tx_sema);
         if (r >= 0)
             break;

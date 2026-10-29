@@ -16,7 +16,7 @@ IOP_CFLAGS  += -DUDPFS_MENU
 else
 IOP_BIN      = udpfs_bd.irx
 IOP_OBJS_DIR = obj.ingame/
-IOP_OBJS     = main.o udprdma.o udpfs_core.o udpfs_bd.o imports.o exports.o
+IOP_OBJS     = ingame.o udprdma.o udpfs_core.o udpfs_bd.o imports.o exports.o
 endif
 
 include $(PS2SDK)/Defs.make

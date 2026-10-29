@@ -1295,6 +1295,32 @@ static void ra_thread(void *arg)
 #endif
         if (++iter % RA_HEARTBEAT_TICKS == 0)
             ra_heartbeat();
+#ifdef RAUDP_MINISTACK
+        /* Diagnostic, in the field that counted deferred sends (always
+           zero in this build, see ra_tx_busy): the longest time between
+           two passes of this loop, in ms, over the last ten seconds.
+           RA_POLL_US plus the work is about 4; more means this thread
+           waits for the CPU and misses the EE's snapshots. */
+        {
+            static iop_sys_clock_t last;
+            static int have_last = 0;
+            static u32 worst_us = 0;
+            iop_sys_clock_t now;
+
+            GetSystemTime(&now);
+            if (have_last) {
+                u32 d = ra_usec_delta(&last, &now);
+
+                if (d > worst_us)
+                    worst_us = d;
+            }
+            last = now;
+            have_last = 1;
+            ra_skip = worst_us / 1000;
+            if (iter % RA_HEARTBEAT_TICKS == 0)
+                worst_us = 0;
+        }
+#endif
         DelayThread(RA_POLL_US);
     }
 }

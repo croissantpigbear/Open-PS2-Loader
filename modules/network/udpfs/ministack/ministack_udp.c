@@ -20,6 +20,17 @@ udp_socket_t *udp_bind(uint16_t port_src, udp_port_handler handler, void *handle
 {
     int i;
 
+    /* OPL change: binding a port again takes over its slot. The UDPFS
+     * client binds its port on every reconnect and ministack has no
+     * unbind; four reconnects used to exhaust the table. */
+    for (i=0; i<UDP_MAX_PORTS; i++) {
+        if (udp_ports[i].port_src == port_src) {
+            udp_ports[i].handler     = handler;
+            udp_ports[i].handler_arg = handler_arg;
+            return &udp_ports[i];
+        }
+    }
+
     for (i=0; i<UDP_MAX_PORTS; i++) {
         if (udp_ports[i].port_src == 0) {
             udp_ports[i].port_src    = port_src;

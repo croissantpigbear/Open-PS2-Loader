@@ -4,6 +4,15 @@
  * Provides block device access over network using UDPRDMA for reliable transport.
  * Uses UDPFS block I/O subset (BREAD/BWRITE) with handle 0.
  * Block device capacity is queried via GETSTAT; sectors are fixed at 512 bytes.
+ *
+ * OPL: based on Neutrino's udpfs_bd.c, which connects once and serves the
+ * server's -b image. This version
+ *  - owns the connection in a watcher thread and reconnects (udpfs_bd_start);
+ *  - in the game, can serve files instead of the image (folder mode, see
+ *    udpfs_files.h): the block device is a row of files, read by BREAD on
+ *    each file's handle;
+ *  - in the menu, shares the connection with the "udpfs:" file device
+ *    (udpfs_fs.c) through udpfs_lock() and udpfs_generation().
  */
 
 #include <errno.h>
@@ -15,30 +24,30 @@
 
 #include "main.h"
 #include "udpfs_core.h"
+#include "udpfs_files.h"
+#include "udpfs_lock.h"
 
 
 /* Block device handle - pre-opened by server */
 #define BLOCK_DEVICE_HANDLE 0
 
+/* Directory bit in a GETSTAT reply's mode (UDPFS.md: FIO_S_IFDIR) */
+#define FIO_S_IFDIR_UDPFS 0x1000
+
+/* open() flags as UDPFS carries them (UDPFS.md, OPEN_REQ) */
+#define UDPFS_O_RDONLY 0x0001
+#define UDPFS_O_RDWR   0x0003
+
 /* State */
 static struct block_device g_udpbd;
 
-/* OPL change: reconnecting. Upstream connects once; if the server goes
- * away the device is gone for good, and in OPL's in-game cdvdman the
- * bdm_disconnect_bd() inside a failed read even deadlocks (cdvdman holds
- * its I/O semaphore around the read, and disconnect waits on it).
- *
- * Here a watcher thread (udpfs_bd_start) owns the connection:
- *  - In the game, a read or write that fails waits for the watcher to
- *    find the server again and is then retried. The game pauses instead
- *    of dying; the block device stays registered throughout.
- *  - In the menu, the watcher also pings the server every few seconds,
- *    so a restarted server is noticed without a read. On loss it takes
- *    the device away and registers it again once the server is back,
- *    so OPL re-reads the disk (which may be another image by then).
- * g_io serialises the protocol: one request on the wire at a time. */
+/* The connection, see udpfs_lock.h. g_io serialises the protocol: one
+ * request on the wire at a time. g_gen counts connections, so handles
+ * from an earlier one are recognised as dead. */
 static int g_io = -1;
-static int g_registered = 0;
+static unsigned int g_gen = 0;
+static int g_up = 0;         /* connected to a server */
+static int g_registered = 0; /* block device registered with BDM */
 static uint32_t g_sectors = 0;
 
 #define RETRY_WAIT_US     (50 * 1000)
@@ -46,22 +55,91 @@ static uint32_t g_sectors = 0;
 #define DISCOVER_PAUSE_US (2 * 1000 * 1000)
 #define PING_PERIOD_US    (4 * 1000 * 1000)
 
-static void _lock(void)
+void udpfs_lock(void)
 {
     WaitSema(g_io);
 }
 
-static void _unlock(void)
+void udpfs_unlock(void)
 {
     SignalSema(g_io);
 }
 
+unsigned int udpfs_generation(void)
+{
+    return g_gen;
+}
+
+#ifndef UDPFS_MENU
+/* Folder mode in the game: the files, written into this module by OPL
+ * before the launch (bdmsupport.c, found by the magic). count 0 means the
+ * server's whole-disk image, as upstream. */
+struct udpfs_files udpfs_game_files = {UDPFS_FILES_MAGIC, 0, 0, {{0}}};
+
+static int32_t g_file_handle[UDPFS_FILES_MAX];
+static unsigned int g_file_gen[UDPFS_FILES_MAX];
+
+/* Server handle for file k on this connection, opened on first use.
+ * Called with g_io held. */
+static int32_t _file_handle(unsigned int k)
+{
+    int32_t h;
+
+    if (g_file_gen[k] == g_gen && g_file_handle[k] >= 0)
+        return g_file_handle[k];
+
+    /* Read-write for a VMC; an ISO on a read-only share still opens. */
+    if (udpfs_core_open(udpfs_game_files.path[k], UDPFS_O_RDWR, 0, 0, &h) < 0 &&
+        udpfs_core_open(udpfs_game_files.path[k], UDPFS_O_RDONLY, 0, 0, &h) < 0) {
+        M_PRINTF("cannot open %s\n", udpfs_game_files.path[k]);
+        return -1;
+    }
+
+    g_file_handle[k] = h;
+    g_file_gen[k] = g_gen;
+    return h;
+}
+
+/* Which handle and which sector in it serve a block device sector. */
+static int _route(uint64_t sector, int32_t *handle, uint64_t *local)
+{
+    unsigned int k;
+
+    if (udpfs_game_files.count == 0) {
+        *handle = BLOCK_DEVICE_HANDLE;
+        *local = sector;
+        return 0;
+    }
+
+    k = (unsigned int)(sector >> UDPFS_FILE_SHIFT);
+    if (k >= udpfs_game_files.count || k >= UDPFS_FILES_MAX)
+        return -EINVAL;
+    *handle = _file_handle(k);
+    *local = sector & ((1ULL << UDPFS_FILE_SHIFT) - 1);
+    return *handle < 0 ? -EIO : 0;
+}
+#else
+static int _route(uint64_t sector, int32_t *handle, uint64_t *local)
+{
+    *handle = BLOCK_DEVICE_HANDLE;
+    *local = sector;
+    return 0;
+}
+#endif
+
 
 /*
  * Block device read (retry + chunking handled by udpfs_bread)
+ *
+ * In the game a read that fails waits for the watcher to find the server
+ * again and is then retried: the game pauses rather than dies, and the
+ * device stays registered (OPL's cdvdman deadlocks on the bdm_disconnect_bd
+ * upstream does from in here). In the menu the error goes back to BDM.
  */
 static int udpfs_bd_read(struct block_device *bd, uint64_t sector, void *buffer, uint16_t count)
 {
+    int32_t handle;
+    uint64_t local;
     int ret;
 
     if (sector >= bd->sectorCount)
@@ -71,21 +149,22 @@ static int udpfs_bd_read(struct block_device *bd, uint64_t sector, void *buffer,
         count = bd->sectorCount - sector;
 
     for (;;) {
-        _lock();
-        if (udpfs_core_is_connected())
-            ret = udpfs_core_bread(BLOCK_DEVICE_HANDLE, sector, buffer, count, bd->sectorSize);
-        else
+        udpfs_lock();
+        if (!udpfs_core_is_connected())
             ret = -EIO;
-        _unlock();
+        else if ((ret = _route(sector, &handle, &local)) == 0)
+            ret = udpfs_core_bread(handle, local, buffer, count, bd->sectorSize);
+        udpfs_unlock();
 
         if (ret >= 0)
             return count;
+        if (ret == -EINVAL)
+            return ret;
 
 #ifdef UDPFS_MENU
         M_DEBUG("udpfs_bd: read failed\n");
         return ret;
 #else
-        /* In a game there is nobody to tell: wait for the server. */
         DelayThread(RETRY_WAIT_US);
 #endif
     }
@@ -97,6 +176,8 @@ static int udpfs_bd_read(struct block_device *bd, uint64_t sector, void *buffer,
  */
 static int udpfs_bd_write(struct block_device *bd, uint64_t sector, const void *buffer, uint16_t count)
 {
+    int32_t handle;
+    uint64_t local;
     int ret;
 
     M_DEBUG("udpfs_bd: write sector=%u, count=%u\n", (uint32_t)sector, count);
@@ -108,15 +189,17 @@ static int udpfs_bd_write(struct block_device *bd, uint64_t sector, const void *
         count = bd->sectorCount - sector;
 
     for (;;) {
-        _lock();
-        if (udpfs_core_is_connected())
-            ret = udpfs_core_bwrite(BLOCK_DEVICE_HANDLE, sector, buffer, count, bd->sectorSize);
-        else
+        udpfs_lock();
+        if (!udpfs_core_is_connected())
             ret = -EIO;
-        _unlock();
+        else if ((ret = _route(sector, &handle, &local)) == 0)
+            ret = udpfs_core_bwrite(handle, local, buffer, count, bd->sectorSize);
+        udpfs_unlock();
 
         if (ret >= 0)
             return count;
+        if (ret == -EINVAL)
+            return ret;
 
 #ifdef UDPFS_MENU
         return -EIO;
@@ -141,80 +224,115 @@ static int udpfs_bd_stop(struct block_device *bd)
 
 
 /*
- * Initialize UDPFS block device driver
+ * Register the block device with BDM: `sectors` sectors of 512 bytes.
+ * size_tag is what the menu's ping compares against (the image size).
  */
-int udpfs_bd_init(void)
+static void _register(uint32_t size_tag, uint64_t sectors)
 {
-    int ret;
-
-    M_DEBUG("UDPFS BD over UDPRDMA\n");
-
-    /* Initialize core UDPFS */
-    ret = udpfs_core_init();
-    if (ret < 0) {
-        return -1;
-    }
-
-    /* Get disk capacity via GETSTAT (returns sector count) */
-    ret = udpfs_core_get_sector_count(BLOCK_DEVICE_HANDLE);
-    if (ret < 0) {
-        udpfs_core_exit();
-        return -1;
-    }
-
-    /* Setup block device with fixed 512-byte sectors */
     g_udpbd.name = "udp";
     g_udpbd.path = "udpbd";
     g_udpbd.devNr = 0;
     g_udpbd.parNr = 0;
     g_udpbd.sectorOffset = 0;
-    g_udpbd.sectorSize = 512;      /* Fixed sector size */
-    g_udpbd.sectorCount = ret;     /* From GETSTAT / 512 */
+    g_udpbd.sectorSize = 512;
+    g_udpbd.sectorCount = sectors;
     g_udpbd.priv = NULL;
     g_udpbd.read = udpfs_bd_read;
     g_udpbd.write = udpfs_bd_write;
     g_udpbd.flush = udpfs_bd_flush;
     g_udpbd.stop = udpfs_bd_stop;
 
-    /* Connect to BDM */
-    g_sectors = (uint32_t)ret;
+    g_sectors = size_tag;
     g_registered = 1;
     bdm_connect_bd(&g_udpbd);
+}
 
-    M_DEBUG("udpfs_bd: ready (sectorSize=%u, sectorCount=%u)\n",
-            g_udpbd.sectorSize, g_udpbd.sectorCount);
+/*
+ * The server's disk image in sectors: > 0, 0 when it has none, < 0 when
+ * the request failed. Called with g_io held.
+ *
+ * Upstream asks GETSTAT with an empty path and takes the size. A server
+ * that shares only a folder (-d) answers that with its root directory,
+ * so a directory means no image here.
+ */
+static int _disk_sectors(void)
+{
+    iox_stat_t st;
+    uint64_t size;
+    int ret;
+
+    ret = udpfs_core_getstat("", &st);
+    if (!udpfs_core_is_connected())
+        return -1;
+    if (ret < 0 || (st.mode & FIO_S_IFDIR_UDPFS) != 0)
+        return 0;
+    size = ((uint64_t)st.hisize << 32) | st.size;
+    size /= 512;
+    if (size == 0)
+        return 0;
+    return size > 0x7FFFFFFF ? 0x7FFFFFFF : (int)size;
+}
+
+/*
+ * Connect: discovery, then the block device if there is one. Called with
+ * g_io held. Returns 0 when connected.
+ *
+ * In the menu a server without a -b image (folder only) is still a
+ * connection, for the "udpfs:" device; there is just no block device.
+ */
+static int _connect(void)
+{
+    int n;
+
+    if (udpfs_core_init() != 0)
+        return -1;
+    g_gen++;
+    g_up = 1;
+
+    if (g_registered)
+        return 0;
+
+#ifndef UDPFS_MENU
+    if (udpfs_game_files.count > 0) {
+        _register(0, (uint64_t)udpfs_game_files.count << UDPFS_FILE_SHIFT);
+        M_PRINTF("server found, %u files\n", udpfs_game_files.count);
+        return 0;
+    }
+#endif
+
+    n = _disk_sectors();
+    if (n > 0) {
+        _register((uint32_t)n, (uint64_t)(uint32_t)n);
+        M_PRINTF("server found, disk of %u sectors\n", (uint32_t)n);
+    } else {
+        M_PRINTF("server found, no disk image (folder only)\n");
+    }
+
+#ifndef UDPFS_MENU
+    /* A game needs its disk. */
+    if (!g_registered) {
+        udpfs_core_exit();
+        g_up = 0;
+        return -1;
+    }
+#endif
     return 0;
 }
 
 
 /*
- * OPL addition: the watcher. Connects (or keeps trying), then keeps the
- * connection: see the note at g_io. Runs as its own thread for the life
- * of the module.
+ * The watcher thread: connects, keeps trying, and keeps the connection.
  */
-#ifdef UDPFS_MENU
-static void _drop(void)
-{
-    if (g_registered) {
-        g_registered = 0;
-        bdm_disconnect_bd(&g_udpbd);
-    }
-}
-#endif
-
 static void _watch(void *arg)
 {
     (void)arg;
 
     for (;;) {
-        if (!g_registered) {
-            /* First connection, or (menu) after a loss: discovery, size,
-             * registration with BDM. */
-            _lock();
-            if (udpfs_bd_init() == 0)
-                M_PRINTF("server found, %u sectors\n", g_sectors);
-            _unlock();
-            if (!g_registered)
+        if (!g_up) {
+            udpfs_lock();
+            _connect();
+            udpfs_unlock();
+            if (!g_up)
                 DelayThread(DISCOVER_PAUSE_US);
             continue;
         }
@@ -222,22 +340,33 @@ static void _watch(void *arg)
 #ifdef UDPFS_MENU
         DelayThread(PING_PERIOD_US);
 
-        /* Idle menu: ask for the size. A restarted server answers on
+        /* Idle menu: ask for the disk size. A restarted server answers on
          * another port and with fresh sequence numbers, so this fails
-         * against it; a different image answers with another size. */
+         * against it; a server that now serves another image, or none, or
+         * one where there was none, answers differently. */
         {
             int lost, n;
 
-            _lock();
-            n = udpfs_core_is_connected() ? udpfs_core_get_sector_count(BLOCK_DEVICE_HANDLE) : -1;
-            lost = n < 0 || (uint32_t)n != g_sectors;
-            if (lost)
+            udpfs_lock();
+            n = udpfs_core_is_connected() ? _disk_sectors() : -1;
+            if (!udpfs_core_is_connected())
+                lost = 1;
+            else if (g_registered)
+                lost = n < 0 || (uint32_t)n != g_sectors;
+            else
+                lost = n > 0;
+            if (lost) {
                 udpfs_core_exit();
-            _unlock();
+                g_up = 0;
+            }
+            udpfs_unlock();
 
             if (lost) {
-                M_PRINTF("server lost, looking again\n");
-                _drop();
+                M_PRINTF("server lost or changed, looking again\n");
+                if (g_registered) {
+                    g_registered = 0;
+                    bdm_disconnect_bd(&g_udpbd);
+                }
             }
         }
 #else
@@ -245,16 +374,17 @@ static void _watch(void *arg)
 
         /* In a game the reads themselves notice a loss. Keep the block
          * device and only find the server again; the waiting read then
-         * goes through. */
-        _lock();
+         * goes through, on handles opened anew. */
+        udpfs_lock();
         if (!udpfs_core_is_connected()) {
             M_PRINTF("server lost, looking again\n");
             udpfs_core_exit();
-            while (udpfs_core_init() != 0)
+            g_up = 0;
+            while (_connect() != 0)
                 DelayThread(RETRY_WAIT_US);
             M_PRINTF("server back\n");
         }
-        _unlock();
+        udpfs_unlock();
 #endif
     }
 }
@@ -273,11 +403,17 @@ int udpfs_bd_start(void)
         return -1;
 
 #ifndef UDPFS_MENU
+    {
+        int i;
+
+        for (i = 0; i < UDPFS_FILES_MAX; i++)
+            g_file_handle[i] = -1;
+    }
+
     /* The game's first disc read follows this module's load. Connect
      * before returning when the server is there, as upstream does; the
      * watcher keeps trying otherwise, and cdvdman waits for the disk. */
-    if (udpfs_bd_init() == 0)
-        M_PRINTF("server found, %u sectors\n", g_sectors);
+    _connect();
 #endif
 
     t.attr = TH_C;

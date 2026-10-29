@@ -5,7 +5,9 @@
 
 /* Please keep these in alphabetical order!  */
 #include <bdm.h>
-#include <ioman.h>
+#ifdef UDPFS_MENU
+#include <iomanX.h>
+#endif
 #include <loadcore.h>
 #ifndef UDPFS_MENU
 #include <mstack.h>

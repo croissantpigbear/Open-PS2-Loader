@@ -14,6 +14,7 @@
 #include "include/rawatch.h"
 #include "modules/network/common/rapops_cfg.h"
 #include "modules/iopcore/common/cdvd_config.h"
+#include "modules/network/udpfs/include/udpfs_files.h"
 
 #include <usbhdfsd-common.h>
 
@@ -71,6 +72,49 @@ int bdmFindPartition(char *target, const char *name, int write)
 }
 
 static unsigned int BdmGeneration = 0;
+
+/* UDPFS folder mode: the page on BDM_UDPFS_SLOT shows "udpfs:" instead of
+   mass4: while UDPFS is on. */
+static int bdmIsUdpfsSlot(int mode)
+{
+    return gEnableUDPFS && mode == BDM_UDPFS_SLOT;
+}
+
+/* The device a BDM page reads: "massN:" or "udpfs:". */
+static void bdmDeviceRoot(int mode, char *out, int size)
+{
+    if (bdmIsUdpfsSlot(mode))
+        snprintf(out, size, "udpfs:");
+    else
+        snprintf(out, size, "mass%d:", mode);
+}
+
+/* UDPFS folder mode: the in-game module reads the game's files by path.
+   The menu's "udpfs:" device kept the paths behind the sectors it gave
+   OPL for this launch; copy that table into the in-game module, found by
+   its magic, before it is sent to the IOP. Folder mode off (or the
+   whole-disk "udp" device) leaves the table empty. */
+static void bdmPrepareUdpfsFiles(int folderMode)
+{
+    struct udpfs_files table;
+    int i;
+
+    memset(&table, 0, sizeof(table));
+    if (folderMode && fileXioDevctl("udpfs:", UDPFS_DEVCTL_FILES, NULL, 0, &table, sizeof(table)) < 0)
+        table.count = 0;
+    memcpy(table.magic, UDPFS_FILES_MAGIC, sizeof(table.magic));
+    if (table.count > UDPFS_FILES_MAX)
+        table.count = 0;
+
+    for (i = 0; i + (int)sizeof(table) <= size_udpfs_bd_irx; i += 4) {
+        if (memcmp((u8 *)&udpfs_bd_irx + i, UDPFS_FILES_MAGIC, sizeof(table.magic)) == 0) {
+            memcpy((u8 *)&udpfs_bd_irx + i, &table, sizeof(table));
+            LOG("UDPFS: %u file(s) for the game\n", table.count);
+            return;
+        }
+    }
+    LOG("UDPFS: file table not found in udpfs_bd.irx\n");
+}
 
 static void bdmEventHandler(void *packet, void *opt)
 {
@@ -212,6 +256,7 @@ static int bdmNeedsUpdate(item_list_t *itemList)
                 deviceEnabled = gEnableBdmHDD;
                 break;
             case BDM_TYPE_UDP:
+            case BDM_TYPE_UDPFS:
                 deviceEnabled = gEnableUDPFS;
                 break;
             default:
@@ -224,9 +269,21 @@ static int bdmNeedsUpdate(item_list_t *itemList)
             pOwner->menuItem.visible = 0;
     }
 
-    if (pDeviceData->bdmULSizePrev != -2 && pDeviceData->bdmDeviceTick == BdmGeneration)
-        return 0;
-    pDeviceData->bdmDeviceTick = BdmGeneration;
+    if (bdmIsUdpfsSlot(itemList->mode)) {
+        /* No BDM events for a folder: the device says when its connection
+           changes. */
+        int state = fileXioDevctl("udpfs:", UDPFS_DEVCTL_STATE, NULL, 0, NULL, 0);
+
+        if (state < 0)
+            state = 0;
+        if (pDeviceData->bdmULSizePrev != -2 && pDeviceData->bdmDeviceTick == state)
+            return 0;
+        pDeviceData->bdmDeviceTick = state;
+    } else {
+        if (pDeviceData->bdmULSizePrev != -2 && pDeviceData->bdmDeviceTick == (int)BdmGeneration)
+            return 0;
+        pDeviceData->bdmDeviceTick = BdmGeneration;
+    }
 
     // Check if the device has been connected or removed.
     if ((result = bdmUpdateDeviceData(itemList)) == 0)
@@ -802,6 +859,11 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         settings->hddIsLBA48 = pDeviceData->bdmHddIsLBA48;
     }
 
+    /* UDPFS: the paths behind this launch's sectors, while the menu's
+       network modules are still there to ask. */
+    if (!strcmp(bdmCurrentDriver, "udpfs") || !strcmp(bdmCurrentDriver, "udp"))
+        bdmPrepareUdpfsFiles(!strcmp(bdmCurrentDriver, "udpfs"));
+
     if (gAutoLaunchBDMGame == NULL)
         deinit(NO_EXCEPTION, itemList->mode); // CAREFUL: deinit will call bdmCleanUp, so bdmGames/game will be freed
     else {
@@ -828,7 +890,7 @@ void bdmLaunchGame(item_list_t *itemList, int id, config_set_t *configSet)
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_DEV9;
         settings->common.fakemodule_flags |= FAKE_MODULE_FLAG_ATAD;
         sysLaunchLoaderElf(filename, "BDM_ATA_MODE", irx_size, irx, size_mcemu_irx, bdm_mcemu_irx, EnablePS2Logo, compatmask);
-    } else if (!strcmp(bdmCurrentDriver, "udp") && strlen(bdmCurrentDriver) == 3) {
+    } else if (!strcmp(bdmCurrentDriver, "udp") || !strcmp(bdmCurrentDriver, "udpfs")) {
         /* UDPFS: the network carries the disc. DEV9 is cdvdman's and SMAP
            is Neutrino's for the whole game, so a game that brings its own
            (online titles) gets stand-ins, as on an SMB share. */
@@ -871,7 +933,7 @@ static int bdmGetTextId(item_list_t *itemList)
         mode = _STR_MX4SIO_GAMES;
     else if (!strcmp(pDeviceData->bdmDriver, "ata") && strlen(pDeviceData->bdmDriver) == 3)
         mode = _STR_HDD_GAMES;
-    else if (!strcmp(pDeviceData->bdmDriver, "udp") && strlen(pDeviceData->bdmDriver) == 3)
+    else if (!strcmp(pDeviceData->bdmDriver, "udp") || !strcmp(pDeviceData->bdmDriver, "udpfs"))
         mode = _STR_UDPFS_GAMES;
 
     return mode;
@@ -891,7 +953,7 @@ static int bdmGetIconId(item_list_t *itemList)
         mode = MX4SIO_ICON;
     else if (!strcmp(pDeviceData->bdmDriver, "ata") && strlen(pDeviceData->bdmDriver) == 3)
         mode = HDD_BD_ICON;
-    else if (!strcmp(pDeviceData->bdmDriver, "udp") && strlen(pDeviceData->bdmDriver) == 3)
+    else if (!strcmp(pDeviceData->bdmDriver, "udp") || !strcmp(pDeviceData->bdmDriver, "udpfs"))
         mode = ETH_ICON;
 
     return mode;
@@ -923,7 +985,7 @@ static void bdmShutdown(item_list_t *itemList)
     // Format the device path.
     // Getting the device number is only relevant per module ie usb0 and mx40 will result in both being massDeviceIndex = 0 or mass0, use mode to determine instead.
     bdm_device_data_t *pDeviceData = (bdm_device_data_t *)itemList->priv;
-    snprintf(path, sizeof(path), "mass%d:", itemList->mode);
+    bdmDeviceRoot(itemList->mode, path, sizeof(path));
 
     // As required by some (typically 2.5") HDDs, issue the SCSI STOP UNIT command to avoid causing an emergency park.
     fileXioDevctl(path, USBMASS_DEVCTL_STOP_ALL, NULL, 0, NULL, 0);
@@ -1069,13 +1131,17 @@ int bdmUpdateDeviceData(item_list_t *itemList)
     int visible = itemList->owner != NULL ? ((opl_io_module_t *)itemList->owner)->menuItem.visible : 0;
 
     // Format the device path and try to open the device.
-    sprintf(path, "mass%d:/", itemList->mode);
+    bdmDeviceRoot(itemList->mode, path, sizeof(path) - 1);
+    strcat(path, "/");
     int dir = fileXioDopen(path);
     // LOG("opendir %s -> %d\n", path, dir);
 
     // If we opened the device and the menu isn't visible (OR is visible but hasn't been initialized ex: manual device start) initialize device info.
     if (dir >= 0 && (visible == 0 || pDeviceData->bdmPrefix[0] == '\0')) {
-        if (gBDMPrefix[0] != '\0')
+        /* A UDPFS folder is the OPL folder itself: no prefix. */
+        if (bdmIsUdpfsSlot(itemList->mode))
+            snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "udpfs:");
+        else if (gBDMPrefix[0] != '\0')
             snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:%s/", itemList->mode, gBDMPrefix);
         else
             snprintf(pDeviceData->bdmPrefix, sizeof(pDeviceData->bdmPrefix), "mass%d:", itemList->mode);
@@ -1098,6 +1164,8 @@ int bdmUpdateDeviceData(item_list_t *itemList)
             itemList->flags = MODE_FLAG_COMPAT_DMA;
         } else if (!strcmp(pDeviceData->bdmDriver, "udp") && strlen(pDeviceData->bdmDriver) == 3)
             pDeviceData->bdmDeviceType = BDM_TYPE_UDP;
+        else if (!strcmp(pDeviceData->bdmDriver, "udpfs"))
+            pDeviceData->bdmDeviceType = BDM_TYPE_UDPFS;
         else
             pDeviceData->bdmDeviceType = BDM_TYPE_UNKNOWN;
 

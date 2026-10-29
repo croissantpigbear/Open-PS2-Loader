@@ -29,6 +29,21 @@ The PS2 writes to the disk (configs, VMCs, the RetroAchievements watch
 lists), and a PC that has the same FAT mounted at the same time corrupts
 it.
 
+### Or serve a folder
+
+If your OPL folders already sit on a PC drive, serve that folder as it is,
+with no image:
+
+    python udpfs_server.py -d E:\PS2
+
+The folder is the OPL root: `DVD/`, `CD/`, `ART/`, `CFG/`, `VMC/` directly
+inside it. The PC keeps its own file system, so the folder can stay open
+in Explorer while you play; just do not change a game's ISO or VMC while
+that game is running. Folder mode takes the last BDM page (where a fifth
+USB/BDM device would go) and shows it as **UDPFS Games** too. A game
+launched from it reads its ISO, and writes its VMCs, as files on the
+server, up to 8 files per launch.
+
 The server listens on UDP 62966 (0xF5F6) and answers the console's
 broadcast, so there is no address to configure. Your firewall has to allow
 inbound UDP to it. xeRAbora runs alongside as usual (UDP 18194).

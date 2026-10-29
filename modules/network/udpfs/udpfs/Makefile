@@ -6,12 +6,14 @@
 MENU ?= 0
 
 IOP_INCS += -I. -I../include
-IOP_CFLAGS += -mno-check-zero-division -DUDPRDMA_MAX_SOCKETS=1 -DFEATURE_UDPFS_BD
+# FEATURE_UDPFS_IOMAN builds the core's file calls: the menu's udpfs: device
+# uses them, the game opens files by path in folder mode.
+IOP_CFLAGS += -mno-check-zero-division -DUDPRDMA_MAX_SOCKETS=1 -DFEATURE_UDPFS_BD -DFEATURE_UDPFS_IOMAN
 
 ifeq ($(MENU),1)
 IOP_BIN      = udpfs_bd_menu.irx
 IOP_OBJS_DIR = obj.menu/
-IOP_OBJS     = menu.o udprdma.o udpfs_core.o udpfs_bd.o lwip_mstack.o lwip_glue.o imports.o exports.o
+IOP_OBJS     = menu.o udprdma.o udpfs_core.o udpfs_bd.o udpfs_fs.o lwip_mstack.o lwip_glue.o imports.o exports.o
 IOP_CFLAGS  += -DUDPFS_MENU
 else
 IOP_BIN      = udpfs_bd.irx

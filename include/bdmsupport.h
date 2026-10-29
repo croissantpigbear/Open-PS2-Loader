@@ -23,6 +23,12 @@ typedef struct
 #define BDM_TYPE_SDC     2
 #define BDM_TYPE_ATA     3
 #define BDM_TYPE_UDP     4 /* UDPFS server on the network (udpfs_bd_menu.irx) */
+#define BDM_TYPE_UDPFS   5 /* UDPFS folder mode: the "udpfs:" device, see BDM_UDPFS_SLOT */
+
+/* UDPFS folder mode (udpfs_server.py -d) has no block device in the menu,
+   only the "udpfs:" file device. With UDPFS on, the last BDM page shows
+   that device in place of mass4: (bdmsupport.c, bdmDeviceRoot). */
+#define BDM_UDPFS_SLOT (MAX_BDM_DEVICES - 1)
 
 typedef struct
 {

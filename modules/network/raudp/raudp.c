@@ -1233,6 +1233,21 @@ static void ra_heartbeat(void)
     ra_ctl_send(hb, n);
 }
 
+/* 0x68 sits below a game's own IOP threads, which is polite and was
+   enough with OPL's drivers. Games from a UDPFS server keep the IOP far
+   busier: every disc sector arrives as network packets the SMAP thread
+   (priority 8) and cdvdman (0x0f) work through, and a game that streams
+   (Rayman 2: Revolution) left this thread waiting more than a frame for
+   a third of all frames, each one a snapshot the EE overwrote unsent.
+   The ministack build runs just below those two instead. Its work per
+   frame is one copy and one frame to the controller, well under a
+   millisecond, so the game's threads hardly notice. */
+#ifdef RAUDP_MINISTACK
+#define RA_THREAD_PRIORITY 0x18
+#else
+#define RA_THREAD_PRIORITY 0x68
+#endif
+
 static int ra_start_thread(void (*entry)(void *), int priority)
 {
     iop_thread_t thread;
@@ -1372,7 +1387,7 @@ int _start(int argc, char *argv[])
 
     RegisterLibraryEntries(&_exp_raudp);
 
-    if (ra_start_thread(ra_thread, 0x68) < 0)
+    if (ra_start_thread(ra_thread, RA_THREAD_PRIORITY) < 0)
         return MODULE_NO_RESIDENT_END;
 
     return MODULE_RESIDENT_END;

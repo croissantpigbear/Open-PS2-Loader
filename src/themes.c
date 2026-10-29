@@ -230,7 +230,17 @@ static void initGameCountText(const char *themePath, config_set_t *themeConfig, 
     char *countStr = (char *)malloc(length * sizeof(char));
     memset(countStr, 0, length * sizeof(char));
 
-    elem->extended = initMutableText(themePath, themeConfig, theme, name, ELEM_TYPE_ATTRIBUTE_TEXT, elem, countStr, NULL, DISPLAY_ALWAYS, SIZING_NONE);
+    mutable_text_t *mutableText = initMutableText(themePath, themeConfig, theme, name, ELEM_TYPE_ATTRIBUTE_TEXT, elem, countStr, NULL, DISPLAY_ALWAYS, SIZING_NONE);
+    free(countStr);
+
+    /* initMutableText copies the value at its string length, one byte for
+       this empty string, while drawGameCountText later writes up to
+       `length` bytes into it ("Files found: 155"). That overran the heap,
+       and launching a game from the page then hung at "Loading config". */
+    free(mutableText->value);
+    mutableText->value = (char *)calloc(length, sizeof(char));
+
+    elem->extended = mutableText;
     elem->endElem = &endMutableText;
     elem->drawElem = &drawGameCountText;
 }

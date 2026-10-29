@@ -168,9 +168,12 @@ udp_socket_t *udp_bind(uint16_t port_src, udp_port_handler handler, void *handle
     t.option = 0;
     t.thread = rx_thread;
     t.stacksize = 0x800;
-    /* Above the threads that wait on udprdma's event flags, so an ACK is
-       seen as soon as lwIP has it. */
-    t.priority = 0x30;
+    /* Above lwIP's tcpip thread (0x18 in ps2sdk's IOP build): a datagram
+       is taken off the socket the moment lwIP queues it, so the server's
+       bursts never pile up in the stack's 32 receive buffers. This thread
+       also sends the window ACKs (udprdma.c, _ist), and the server waits
+       on those. */
+    t.priority = 0x16;
     g_sock[i].tid = CreateThread(&t);
     if (g_sock[i].tid < 0) {
         g_sock[i].fd = 0;

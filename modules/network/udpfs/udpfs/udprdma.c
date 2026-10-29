@@ -30,8 +30,33 @@
  * server sends at most SEND_WINDOW packets ahead */
 #define UDPRDMA_RX_ACK_WINDOW 6
 
+/* Sends per packet before giving up (OPL change for the menu, where the
+ * ACK wait is short): eight times 120 ms outlasts the server's half
+ * second of waiting for a lost final ACK, during which it reads no
+ * requests. The game keeps upstream's four times 500 ms. */
+#ifdef UDPFS_MENU
+#define UDPRDMA_SEND_RETRIES 8
+#else
+#define UDPRDMA_SEND_RETRIES UDPRDMA_MAX_RETRIES
+#endif
+
 /* Receive wait slice, see udprdma_recv (OPL change) */
+#ifdef UDPFS_MENU
+#define UDPRDMA_RX_SLICE_US (60 * 1000)
+#else
 #define UDPRDMA_RX_SLICE_US (150 * 1000)
+#endif
+
+/* How long a sent packet waits for its ACK before it goes again (OPL
+ * change for the menu). The server ACKs every request the moment it
+ * arrives, so on a LAN the ACK takes a millisecond or two; the menu's
+ * lwIP drops a packet now and then under a burst, and each loss cost the
+ * full 500 ms. The game keeps upstream's value. */
+#ifdef UDPFS_MENU
+#define UDPRDMA_ACK_WAIT_US (120 * 1000)
+#else
+#define UDPRDMA_ACK_WAIT_US UDPRDMA_RETX_TIMEOUT_US
+#endif
 
 /* Socket states */
 typedef enum {
@@ -75,6 +100,11 @@ struct udprdma_socket {
     /* Pre-built packet headers */
     udprdma_pkt_disc_t pkt_disc;
     udprdma_pkt_data_t pkt_data;
+#ifdef UDPFS_MENU
+    /* Window ACKs and NACKs sent from the receive thread (OPL change, see
+     * _ist): a packet of their own, so they never race pkt_data. */
+    udprdma_pkt_data_t pkt_ack;
+#endif
 
     /* Synchronization */
     int event_flag;
@@ -96,6 +126,10 @@ static unsigned int _timeout_cb(void *arg)
     iSetEventFlag(s->event_flag, EF_TIMEOUT);
     return 0;  /* Don't repeat */
 }
+
+#ifdef UDPFS_MENU
+static void _send_ack_rx(struct udprdma_socket *s, int is_ack);
+#endif
 
 /*
  * Interrupt service thread callback
@@ -167,6 +201,19 @@ static int _ist(udp_socket_t *udp_socket, void *arg, const uint8_t *hdr, uint16_
                 uint32_t hdr_size = data_hdr.hdr_word_count * 4;
                 uint32_t payload_size = hdr_size + data_hdr.data_byte_count;
 
+#ifdef UDPFS_MENU
+                /* OPL change: a repeat of the last packet received means our
+                 * ACK of it was lost. The server re-sends the end of a
+                 * transfer until that ACK comes, for up to half a second,
+                 * and ignores new requests meanwhile; upstream answered the
+                 * repeat with a NACK for the next seq, or not at all once
+                 * udprdma_recv had returned. Acknowledge it again. */
+                if (payload_size > 0 &&
+                    base_hdr.seq_nr == ((s->rx_seq_nr_expected - 1) & 0xFFF)) {
+                    _send_ack_rx(s, 1);
+                    break;
+                }
+#endif
                 if (payload_size > 0 && s->rx_buffer != NULL) {
                     if (base_hdr.seq_nr == s->rx_seq_nr_expected) {
                         /* Extract app header via smap_fifo_read PIO (first packet only) */
@@ -203,7 +250,16 @@ static int _ist(udp_socket_t *udp_socket, void *arg, const uint8_t *hdr, uint16_
                         } else if (++s->rx_window_count >= UDPRDMA_RX_ACK_WINDOW) {
                             /* Flow control: signal recv to send cumulative ACK */
                             s->rx_window_count = 0;
+#ifdef UDPFS_MENU
+                            /* OPL change: in the menu this callback runs in a
+                             * thread (lwip_mstack.c) that may send, and the
+                             * thread waiting in udprdma_recv can be slow to get
+                             * the CPU there. The server stalls without this
+                             * ACK and drops the transfer after 400 ms. */
+                            _send_ack_rx(s, 1);
+#else
                             SetEventFlag(s->event_flag, EF_RX_WINDOW);
+#endif
                         }
                     } else {
                         /* Out of order - send one NACK per missing seq_nr.
@@ -212,7 +268,11 @@ static int _ist(udp_socket_t *udp_socket, void *arg, const uint8_t *hdr, uint16_
                          * only needs one NACK to know what to retransmit. */
                         if (!s->rx_nack_sent) {
                             s->rx_nack_sent = 1;
+#ifdef UDPFS_MENU
+                            _send_ack_rx(s, 0); /* as for the window ACK above */
+#else
                             SetEventFlag(s->event_flag, EF_RX_NACK);
+#endif
                         }
                     }
                 }
@@ -275,6 +335,27 @@ static void _send_ack(struct udprdma_socket *s, int is_ack)
 
     /* ACK-only packets don't consume sequence numbers */
 }
+
+#ifdef UDPFS_MENU
+/*
+ * ACK or NACK from the receive thread, on pkt_ack (OPL change, see _ist).
+ * Same fields as _send_ack.
+ */
+static void _send_ack_rx(struct udprdma_socket *s, int is_ack)
+{
+    s->pkt_ack.hdr.packet_type = UDPRDMA_PT_DATA;
+    s->pkt_ack.hdr.seq_nr = s->tx_seq_nr;
+    s->pkt_ack.data.seq_nr_ack = is_ack ?
+        ((s->rx_seq_nr_expected - 1) & 0xFFF) :
+        s->rx_seq_nr_expected;
+    s->pkt_ack.data.flags = is_ack ? UDPRDMA_DF_ACK : 0;
+    s->pkt_ack.data.hdr_word_count = 0;
+    s->pkt_ack.data.data_byte_count = 0;
+
+    udp_packet_send(s->udp_socket, (udp_packet_t *)&s->pkt_ack,
+        sizeof(udprdma_hdr_t) + sizeof(udprdma_hdr_data_t));
+}
+#endif
 
 /*
  * Send DATA packet with payload
@@ -369,7 +450,7 @@ static int _wait_ack(struct udprdma_socket *s, uint16_t sent_seq_nr)
     uint32_t evf_bits;
     int acked = 0;
 
-    USec2SysClock(UDPRDMA_RETX_TIMEOUT_US, &clock);
+    USec2SysClock(UDPRDMA_ACK_WAIT_US, &clock);
     SetAlarm(&clock, _timeout_cb, s);
 
     for (;;) {
@@ -440,6 +521,9 @@ udprdma_socket_t *udprdma_create(uint16_t port, uint16_t service_id)
     /* Initialize packet headers */
     udp_packet_init((udp_packet_t *)&s->pkt_disc, IP_ADDR(255,255,255,255), s->port);
     udp_packet_init((udp_packet_t *)&s->pkt_data, IP_ADDR(255,255,255,255), s->port);
+#ifdef UDPFS_MENU
+    udp_packet_init((udp_packet_t *)&s->pkt_ack, IP_ADDR(255,255,255,255), s->port);
+#endif
 
     M_DEBUG("udprdma_create: socket created on port 0x%04X, service 0x%04X\n",
         s->port, s->service_id);
@@ -500,6 +584,9 @@ int udprdma_discover(udprdma_socket_t *socket, uint32_t timeout_ms)
                 
             /* Update packet destination to peer */
             udp_packet_init((udp_packet_t *)&socket->pkt_data, socket->peer_ip, socket->port);
+#ifdef UDPFS_MENU
+            udp_packet_init((udp_packet_t *)&socket->pkt_ack, socket->peer_ip, socket->port);
+#endif
 
             return UDPRDMA_OK;
         }
@@ -533,7 +620,7 @@ int udprdma_send(udprdma_socket_t *socket, const void *data, uint32_t size)
     /* Clear stale EF_RX_ACK left over from multi-packet receive */
     ClearEventFlag(socket->event_flag, ~EF_RX_ACK);
 
-    for (retries = 0; retries < UDPRDMA_MAX_RETRIES; retries++) {
+    for (retries = 0; retries < UDPRDMA_SEND_RETRIES; retries++) {
         /* Send data and remember sequence number */
         sent_seq_nr = socket->tx_seq_nr;
         _send_data(socket, data, size);
@@ -570,7 +657,7 @@ int udprdma_send_ll(udprdma_socket_t *socket,
     /* Clear stale EF_RX_ACK left over from multi-packet receive */
     ClearEventFlag(socket->event_flag, ~EF_RX_ACK);
 
-    for (retries = 0; retries < UDPRDMA_MAX_RETRIES; retries++) {
+    for (retries = 0; retries < UDPRDMA_SEND_RETRIES; retries++) {
         sent_seq_nr = socket->tx_seq_nr;
         _send_data_ll(socket, app_hdr, app_hdr_size, data, data_size);
 

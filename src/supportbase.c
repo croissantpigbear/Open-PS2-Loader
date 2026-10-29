@@ -973,12 +973,36 @@ config_set_t *sbPopulateConfig(base_game_info_t *game, const char *prefix, const
     }
 
     configSetStr(config, CONFIG_ITEM_NAME, game->name);
+    /* A second copy of the name, as apps have: a theme that wraps #Name
+       (fntFitString breaks the stored string in place) leaves #LongName
+       untouched for another screen to wrap at its own width. */
+    configSetStr(config, CONFIG_ITEM_LONGNAME, game->name);
     configSetInt(config, CONFIG_ITEM_SIZE, game->sizeMB);
 
     if (game->format != GAME_FORMAT_USBLD) {
-        if (!strcmp(game->extension, ".iso"))
-            configSetStr(config, CONFIG_ITEM_FORMAT, "ISO");
-        else if (!strcmp(game->extension, ".zso"))
+        if (!strcmp(game->extension, ".iso")) {
+            const char *format = "ISO";
+
+            /* UDPFS folder mode: the server decompresses Game.zso (or .cso)
+               and lists it as Game.iso, so the console reads a plain image.
+               For the theme's format badge, say what is on the PC. Display
+               only: nothing reads #Format to decide how to load. */
+            if (!strncmp(prefix, "udpfs:", 6)) {
+                static const char *packed[][2] = {{".zso", "ZSO"}, {".cso", "CSO"}};
+                char zpath[256];
+                struct stat zst;
+                int k;
+
+                for (k = 0; k < 2; k++) {
+                    snprintf(zpath, sizeof(zpath), "%s%s%s%s%s%s", prefix, sep, game->media == SCECdPS2CD ? "CD" : "DVD", sep, game->name, packed[k][0]);
+                    if (stat(zpath, &zst) == 0) {
+                        format = packed[k][1];
+                        break;
+                    }
+                }
+            }
+            configSetStr(config, CONFIG_ITEM_FORMAT, format);
+        } else if (!strcmp(game->extension, ".zso"))
             configSetStr(config, CONFIG_ITEM_FORMAT, "ZSO");
     } else if (game->format == GAME_FORMAT_USBLD)
         configSetStr(config, CONFIG_ITEM_FORMAT, "UL");

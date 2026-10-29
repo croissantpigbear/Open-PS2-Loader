@@ -69,6 +69,17 @@ typedef struct
 
     const char *decorator;
     mutable_image_t *decoratorImage;
+
+    /* CoverRow: the games beside the selected one as a row of covers.
+       side covers each way, coverWidth x coverHeight, spacing apart; gap
+       is the distance from the row's centre to the first neighbour's
+       inner edge, the room the theme's own ItemCover takes. */
+    int isCoverRow;
+    int side;
+    int coverWidth;
+    int coverHeight;
+    int spacing;
+    int gap;
 } items_list_t;
 
 typedef struct theme_element
@@ -107,6 +118,9 @@ typedef struct theme
 {
     int useDefault;
     int usedHeight;
+    /* horizontal_list=1: left/right step through the games and up/down
+       change the device page, for themes that lay games out in a row. */
+    int horizontalList;
 
     unsigned char bgColor[3];
     u64 textColor;

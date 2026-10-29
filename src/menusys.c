@@ -977,14 +977,30 @@ void menuRenderMain(void)
 
 void menuHandleInputMain()
 {
+    /* A theme with its games in a row (horizontal_list=1) turns the d-pad:
+       left/right step through the games, up/down change the device page. */
+    int row = gTheme->horizontalList;
+
     if (getKey(KEY_LEFT)) {
-        menuPrevH();
+        if (row)
+            menuPrevV();
+        else
+            menuPrevH();
     } else if (getKey(KEY_RIGHT)) {
-        menuNextH();
+        if (row)
+            menuNextV();
+        else
+            menuNextH();
     } else if (getKey(KEY_UP)) {
-        menuPrevV();
+        if (row)
+            menuPrevH();
+        else
+            menuPrevV();
     } else if (getKey(KEY_DOWN)) {
-        menuNextV();
+        if (row)
+            menuNextH();
+        else
+            menuNextV();
     } else if (getKeyOn(KEY_CROSS)) {
         selected_item->item->execCross(selected_item->item);
     } else if (getKeyOn(KEY_TRIANGLE)) {
@@ -1039,9 +1055,9 @@ void menuHandleInputInfo()
             guiSwitchScreen(GUI_SCREEN_MAIN);
         else
             selected_item->item->execCross(selected_item->item);
-    } else if (getKey(KEY_UP)) {
+    } else if (getKey(KEY_UP) || (gTheme->horizontalList && getKey(KEY_LEFT))) {
         menuPrevV();
-    } else if (getKey(KEY_DOWN)) {
+    } else if (getKey(KEY_DOWN) || (gTheme->horizontalList && getKey(KEY_RIGHT))) {
         menuNextV();
     } else if (getKeyOn(KEY_CIRCLE)) {
         if (gSelectButton == KEY_CROSS)

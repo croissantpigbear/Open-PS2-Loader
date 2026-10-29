@@ -49,6 +49,7 @@ enum ELEM_ATTRIBUTE_TYPE {
     ELEM_TYPE_LOADING_ICON,
     ELEM_TYPE_BDM_INDEX,
     ELEM_TYPE_GAME_COUNT_TEXT,
+    ELEM_TYPE_COVER_ROW,
     ELEM_TYPE_COUNT
 };
 
@@ -77,7 +78,8 @@ static const char *elementsType[ELEM_TYPE_COUNT] = {
     "InfoHintText",
     "LoadingIcon",
     "BdmIndex",
-    "GameCountText"};
+    "GameCountText",
+    "CoverRow"};
 
 // Common functions for Text ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1101,11 +1103,102 @@ static void initItemsList(const char *themePath, config_set_t *themeConfig, them
         itemsList->decorator = decorator; // Will be used later (thmValidate)
 
     itemsList->decoratorImage = NULL;
+    itemsList->isCoverRow = 0;
 
     elem->extended = itemsList;
     // elem->endElem = &endBasic; does the job
 
     elem->drawElem = &drawItemsList;
+}
+
+/* CoverRow ---------------------------------------------------------------
+
+   The covers of the games beside the selected one, side by side: `side`
+   covers to the left and as many to the right of the row's centre, each
+   further one dimmer. The selected game is left to the theme's ItemCover,
+   drawn in the gap, so it keeps its size, overlay and RA mark.
+
+   To OPL a CoverRow is the games list (ELEM_TYPE_ITEMS_LIST): paging and
+   the selection work as for ItemsList, with 2 * side + 1 games a page. Its
+   covers come from the ItemCover's cache (decorator=COV), which has to
+   hold at least that many: cover_count on the ItemCover. */
+
+static void drawCoverRow(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
+{
+    items_list_t *row = (items_list_t *)elem->extended;
+    mutable_image_t *img = row->decoratorImage;
+    int dir, d;
+
+    (void)config;
+    if (item == NULL || img == NULL)
+        return;
+
+    for (dir = -1; dir <= 1; dir += 2) {
+        struct submenu_list *ps = item;
+
+        for (d = 1; d <= row->side; d++) {
+            GSTEXTURE *tex;
+            theme_element_t at;
+            int x, shade;
+
+            ps = (dir < 0) ? ps->prev : ps->next;
+            if (ps == NULL)
+                break;
+
+            tex = getGameImageTexture(img->cache, menu->item->userdata, &ps->item);
+            if (tex == NULL || tex->Mem == NULL)
+                tex = (img->defaultTexture != NULL) ? &img->defaultTexture->source : NULL;
+            if (tex == NULL || tex->Mem == NULL)
+                continue;
+
+            x = elem->posX + dir * (row->gap + (d - 1) * (row->coverWidth + row->spacing) + (row->coverWidth >> 1));
+            /* 0x80 is full brightness; each step out is a little darker */
+            shade = 0x80 - d * (0x80 / (row->side + 2));
+
+            rmDrawPixmap(tex, x, elem->posY, ALIGN_CENTER, row->coverWidth, row->coverHeight, elem->scaled,
+                         GS_SETREG_RGBA(shade, shade, shade, 0x80));
+
+            at = *elem;
+            at.posX = x;
+            at.aligned = ALIGN_CENTER;
+            at.width = row->coverWidth;
+            at.height = row->coverHeight;
+            drawRAMark(menu, ps, &at, img, tex);
+        }
+    }
+}
+
+static void initCoverRow(const char *themePath, config_set_t *themeConfig, theme_t *theme, theme_element_t *elem, const char *name)
+{
+    char elemProp[64];
+    items_list_t *row;
+
+    initItemsList(themePath, themeConfig, theme, elem, name, "COV");
+    row = (items_list_t *)elem->extended;
+    row->isCoverRow = 1;
+    row->side = 3;
+    row->coverWidth = 96;
+    row->coverHeight = 136;
+    row->spacing = 14;
+    row->gap = 90;
+
+    snprintf(elemProp, sizeof(elemProp), "%s_side", name);
+    configGetInt(themeConfig, elemProp, &row->side);
+    snprintf(elemProp, sizeof(elemProp), "%s_cover_width", name);
+    configGetInt(themeConfig, elemProp, &row->coverWidth);
+    snprintf(elemProp, sizeof(elemProp), "%s_cover_height", name);
+    configGetInt(themeConfig, elemProp, &row->coverHeight);
+    snprintf(elemProp, sizeof(elemProp), "%s_spacing", name);
+    configGetInt(themeConfig, elemProp, &row->spacing);
+    snprintf(elemProp, sizeof(elemProp), "%s_gap", name);
+    configGetInt(themeConfig, elemProp, &row->gap);
+    if (row->side < 0)
+        row->side = 0;
+    if (row->side > 8)
+        row->side = 8;
+
+    row->displayedItems = 2 * row->side + 1;
+    elem->drawElem = &drawCoverRow;
 }
 
 static void drawItemText(struct menu_list *menu, struct submenu_list *item, config_set_t *config, struct theme_element *elem)
@@ -1261,6 +1354,16 @@ static int addGUIElem(const char *themePath, config_set_t *themeConfig, theme_t 
                 } else if (!theme->appsItemsList) {
                     elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_ITEMS_LIST, 42, 42, ALIGN_NONE, 400, 360, SCALING_RATIO, theme->textColor, theme->fonts[0]);
                     initItemsList(themePath, themeConfig, theme, elem, name, NULL);
+                    theme->appsItemsList = elem;
+                }
+            } else if (!strcmp(elementsType[ELEM_TYPE_COVER_ROW], type)) {
+                if (!theme->gamesItemsList) {
+                    elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_ITEMS_LIST, screenWidth >> 1, 200, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, theme->textColor, theme->fonts[0]);
+                    initCoverRow(themePath, themeConfig, theme, elem, name);
+                    theme->gamesItemsList = elem;
+                } else if (!theme->appsItemsList) {
+                    elem = initBasic(themePath, themeConfig, theme, name, ELEM_TYPE_ITEMS_LIST, screenWidth >> 1, 200, ALIGN_CENTER, DIM_UNDEF, DIM_UNDEF, SCALING_RATIO, theme->textColor, theme->fonts[0]);
+                    initCoverRow(themePath, themeConfig, theme, elem, name);
                     theme->appsItemsList = elem;
                 }
             } else if (!strcmp(elementsType[ELEM_TYPE_ITEM_ICON], type)) {
@@ -1487,6 +1590,10 @@ static void thmLoad(const char *themePath)
     int intValue;
     if (configGetInt(themeConfig, "use_default", &intValue))
         newT->useDefault = intValue;
+
+    newT->horizontalList = 0;
+    if (configGetInt(themeConfig, "horizontal_list", &intValue))
+        newT->horizontalList = intValue ? 1 : 0;
 
     if (configGetInt(themeConfig, "use_real_height", &intValue)) {
         if (intValue)

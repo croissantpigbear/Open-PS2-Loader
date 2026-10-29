@@ -2,6 +2,14 @@
   <img src="gfx/xerabora-ra.png" alt="OPL + RA" width="760">
 </p>
 
+> **This fork (branch `udpfs`) adds UDPFS:** play your games from a folder
+> on a PC or Mac over the network, with RetroAchievements, and two themes.
+> **Downloads:** [OPL ELF and themes](https://github.com/croissantpigbear/Open-PS2-Loader/releases)
+> · [UDPFS Server and OPL Library for Windows and macOS](https://github.com/croissantpigbear/udpfs-server/releases)
+> · [What's new in this fork](README-UDPFS.md)
+>
+> Everything below is hacan359's OPL-RA README.
+
 # Open PS2 Loader with a RetroAchievements agent
 
 A fork of [Open PS2 Loader](https://github.com/ps2homebrew/Open-PS2-Loader).

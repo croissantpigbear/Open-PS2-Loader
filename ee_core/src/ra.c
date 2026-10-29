@@ -28,7 +28,9 @@ extern int isceSifSetDma(SifDmaTransfer_t *dmat, int count);
 extern int isceSifDmaStat(int trid);
 
 /* Filled in by iopmgr.c while loading the IOP modules. */
-extern unsigned int ra_snap_iop; /* snapshot buffer in IOP RAM, 0 if none */
+extern unsigned int ra_snap_iop;    /* snapshot buffer in IOP RAM, 0 if none */
+extern unsigned int ra_snap_slots;  /* slots in it, see ra_snap.h */
+extern unsigned int ra_snap_stride; /* bytes between them */
 
 /* Frames to wait after the game starts before touching its memory: the
    game must load its own ELF first. About 10 seconds at 60 frames/s. */
@@ -192,6 +194,11 @@ static void ra_snap_send(void)
 
     if (ra_snap_iop == 0 || ra_watch_count == 0 || ra_snap_buf == NULL)
         return;
+    /* A slot too small for this snapshot would spill into the next one,
+       or past the buffer. Cannot happen with the sizes iopmgr chose;
+       checked because this runs inside the game. */
+    if (ra_snap_slots > 1 && (unsigned int)RA_SNAP_DMA_SIZE(ra_snap_bytes) > ra_snap_stride)
+        return;
 
     if (ra_snap_dma_id != 0 && isceSifDmaStat(ra_snap_dma_id) >= 0) {
         ra_snap_skip++;
@@ -321,6 +328,8 @@ static void ra_snap_send(void)
 
     s->read_cycles = ra_ticks() - t0;
     s->frame_cycles = ra_frame_ticks;
+    s->slots = ra_snap_slots;
+    s->stride = ra_snap_stride;
     s->seq_end = ra_snap_seq;
 
     /* Trailer after the values: the DMA copies front to back, so this is
@@ -329,7 +338,7 @@ static void ra_snap_send(void)
     *(volatile u32 *)UNCACHED_SEG(&ra_snap_buf[RA_SNAP_TRAILER_OFF(ra_snap_bytes)]) = ra_snap_seq;
 
     dmat.src = (void *)ra_snap_buf;
-    dmat.dest = (void *)ra_snap_iop;
+    dmat.dest = (void *)(ra_snap_iop + (ra_snap_slots > 1 ? (ra_snap_seq % ra_snap_slots) * ra_snap_stride : 0));
     dmat.size = RA_SNAP_DMA_SIZE(ra_snap_bytes);
     dmat.attr = 0;
 

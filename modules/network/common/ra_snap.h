@@ -18,6 +18,16 @@
   difference means the snapshot was overwritten mid-copy and is skipped.
   The seq_end field inside the header cannot detect this: it is written
   before the values arrive.
+
+  Slots: ee_core writes snapshot seq into slot (seq % slots) of a buffer
+  of `slots` equal slots, `stride` bytes apart; both numbers ride in every
+  header. With one buffer, a game that keeps the SIF busy (Rayman 2:
+  Revolution streams all the time) had each snapshot land while raudp was
+  still reading the previous one, or overwritten before it went out: a
+  third of all frames never reached the PC. With four, raudp reads a slot
+  the EE will not touch for three frames, and sends them in seq order. A
+  writer that sets slots to 0 or 1 (rapull, under POPS) gets the single
+  buffer behaviour.
 */
 
 #ifndef __RA_SNAP_H__
@@ -52,7 +62,10 @@ struct ra_snap
        of the frame without knowing the clock. */
     unsigned int read_cycles;
     unsigned int frame_cycles;
-    unsigned int pad[2];
+    /* The slot layout, the same in every header: see the note at the
+       top. 0 or 1 means a single buffer. */
+    unsigned int slots;
+    unsigned int stride;
     /* followed by bytes bytes of values, then the trailer word */
 };
 
@@ -68,6 +81,9 @@ struct ra_snap
    64-byte cache line so the EE buffer shares no line with other data */
 #define RA_SNAP_TOTAL_FOR(bytes) ((RA_SNAP_DMA_SIZE(bytes) + 63) & ~63)
 #define RA_SNAP_TOTAL            RA_SNAP_TOTAL_FOR(RA_SNAP_MAX_BYTES)
+
+/* Slots ee_core asks for; fewer when the IOP heap cannot spare them */
+#define RA_SNAP_SLOTS 4
 
 /* PC -> game side: raudp DMAs this 16-byte record into an ee_core buffer
    whose address came as a load argument; the VBLANK handler treats a new

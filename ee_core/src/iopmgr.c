@@ -26,6 +26,8 @@ extern int _iop_reboot_count;
    and can DMA straight into it without touching the SIF command table,
    which the game shares. Zero means the allocation failed. */
 unsigned int ra_snap_iop = 0;
+unsigned int ra_snap_slots = 1;  /* see "Slots" in ra_snap.h */
+unsigned int ra_snap_stride = 0; /* bytes between slots */
 
 /* Eight hex digits, no sprintf in ee_core. The address travels to the
    module as a load argument string. */
@@ -225,7 +227,27 @@ static void ResetIopSpecial(const char *args, unsigned int arglen)
        RA_SNAP_TOTAL covers the header plus the values of the largest
        supported watch list. Skipped with no watch list, as above. */
     if (config->raWatchCount > 0) {
-        void *snap = SifAllocIopHeap(RA_SNAP_TOTAL);
+        /* Slots sized for this game's snapshot, not the largest
+           possible: its values plus a pair per chain is the most
+           RA_SetupWatchList can end up with. Four if the heap has them,
+           down to one. */
+        unsigned int bound = (unsigned int)config->raSnapBytes;
+        void *snap = NULL;
+
+        if (config->raNodeCount > 0 && config->raNodeCount <= RA_NODE_MAX)
+            bound += (unsigned int)config->raNodeCount * RA_NODE_PAIR_BYTES;
+        if (bound > RA_SNAP_MAX_BYTES)
+            bound = RA_SNAP_MAX_BYTES;
+        ra_snap_stride = RA_SNAP_TOTAL_FOR(bound);
+        for (ra_snap_slots = RA_SNAP_SLOTS; ra_snap_slots > 1; ra_snap_slots--) {
+            if ((snap = SifAllocIopHeap(ra_snap_stride * ra_snap_slots)) != NULL)
+                break;
+        }
+        if (snap == NULL) {
+            ra_snap_slots = 1;
+            ra_snap_stride = RA_SNAP_TOTAL;
+            snap = SifAllocIopHeap(RA_SNAP_TOTAL);
+        }
 
         if (snap != NULL) {
             /* argv[1] laid out by the RA_ARG_* offsets in ra_snap.h,

@@ -147,6 +147,10 @@ static int ra_sent_any = 0;
    The address arrives as a load argument. */
 static volatile struct ra_snap *ra_snap = NULL;
 
+/* The snapshot ra_send_one() sends: picked by ra_snap_pending() among
+   the slots (see "Slots" in ra_snap.h). NULL sends a header only. */
+static volatile struct ra_snap *ra_cur = NULL;
+
 /* Event buffer in ee_core, written from here over SIF DMA. The address
    arrives in the same load argument, after the snapshot buffer's. 0 when
    ee_core did not give one; events are then dropped. */
@@ -685,32 +689,32 @@ static void ra_send_one(void)
        values is the last to arrive. A trailer or header that no longer
        matches after the copy means a newer snapshot overwrote part of
        what was copied: the snapshot is torn and dropped. */
-    if (ra_snap != NULL) {
-        sq = ra_snap->seq;
+    if (ra_cur != NULL) {
+        sq = ra_cur->seq;
 
-        if (ra_snap->magic == RA_SNAP_MAGIC) {
-            const u8 *src = (const u8 *)ra_snap + RA_SNAP_HDR;
+        if (ra_cur->magic == RA_SNAP_MAGIC) {
+            const u8 *src = (const u8 *)ra_cur + RA_SNAP_HDR;
             u32 tail;
 
-            nb = ra_snap->bytes;
+            nb = ra_cur->bytes;
             if (nb > RA_SNAP_MAX_BYTES)
                 nb = RA_SNAP_MAX_BYTES;
 
             ra_copy(ra_stage, src, nb);
 
-            tail = *(volatile u32 *)((const u8 *)ra_snap + RA_SNAP_TRAILER_OFF(nb));
+            tail = *(volatile u32 *)((const u8 *)ra_cur + RA_SNAP_TRAILER_OFF(nb));
 
-            if (tail != sq || ra_snap->seq != sq) {
+            if (tail != sq || ra_cur->seq != sq) {
                 ra_snap_bad++;
                 return; /* the next poll copies it whole */
             } else {
                 ra_fmt(&ra_payload[RA_OFF(RA_F_SQ)], sq, 6);
-                ra_fmt(&ra_payload[RA_OFF(RA_F_DS)], ra_snap->dma_skip, 6);
-                ra_fmt(&ra_payload[RA_OFF(RA_F_N)], ra_snap->count, 4);
-                ra_fmt(&ra_payload[RA_OFF(RA_F_RC)], ra_snap->read_cycles > 9999999 ? 9999999 : ra_snap->read_cycles, 7);
-                ra_fmt(&ra_payload[RA_OFF(RA_F_FC)], ra_snap->frame_cycles > 9999999 ? 9999999 : ra_snap->frame_cycles, 7);
+                ra_fmt(&ra_payload[RA_OFF(RA_F_DS)], ra_cur->dma_skip, 6);
+                ra_fmt(&ra_payload[RA_OFF(RA_F_N)], ra_cur->count, 4);
+                ra_fmt(&ra_payload[RA_OFF(RA_F_RC)], ra_cur->read_cycles > 9999999 ? 9999999 : ra_cur->read_cycles, 7);
+                ra_fmt(&ra_payload[RA_OFF(RA_F_FC)], ra_cur->frame_cycles > 9999999 ? 9999999 : ra_cur->frame_cycles, 7);
 
-                ra_id_put((const char *)ra_snap->game_id);
+                ra_id_put((const char *)ra_cur->game_id);
             }
         } else {
             ra_snap_bad++;
@@ -766,12 +770,62 @@ static void ra_send_one(void)
     }
 }
 
-/* -1: no snapshot to speak of; 1: one the PC has not seen; 0: sent already. */
+/* A slot whose DMA has finished: the header and the trailer agree.
+   ra_send_one() checks again after its copy. */
+static int ra_slot_complete(volatile struct ra_snap *s, u32 *sq)
+{
+    u32 nb;
+
+    if (s->magic != RA_SNAP_MAGIC)
+        return 0;
+    *sq = s->seq;
+    nb = s->bytes;
+    if (nb > RA_SNAP_MAX_BYTES)
+        return 0;
+    return *(volatile u32 *)((volatile u8 *)s + RA_SNAP_TRAILER_OFF(nb)) == *sq;
+}
+
+/* -1: no snapshot to speak of; 1: one the PC has not seen; 0: sent
+   already. Sets ra_cur to the snapshot to send: the one not seen, else
+   the newest, for the keep-alive.
+
+   With slots, the one not seen is the oldest complete snapshot newer
+   than the last sent, so a thread that fell a frame or two behind sends
+   them all, in order. The first send of a run takes the newest. */
 static int ra_snap_pending(void)
 {
+    volatile struct ra_snap *next = NULL, *latest = NULL;
+    u32 slots, stride, k, sq, next_sq = 0, latest_sq = 0;
+
+    ra_cur = ra_snap;
     if (ra_snap == NULL || ra_snap->magic != RA_SNAP_MAGIC)
         return -1;
-    return (!ra_sent_any || ra_snap->seq != ra_sent_sq) ? 1 : 0;
+
+    slots = ra_snap->slots;
+    stride = ra_snap->stride;
+    if (slots <= 1 || slots > RA_SNAP_SLOTS || (stride & 63) != 0 ||
+        stride < (u32)RA_SNAP_TOTAL_FOR(ra_snap->bytes > RA_SNAP_MAX_BYTES ? RA_SNAP_MAX_BYTES : ra_snap->bytes))
+        return (!ra_sent_any || ra_snap->seq != ra_sent_sq) ? 1 : 0;
+
+    for (k = 0; k < slots; k++) {
+        volatile struct ra_snap *s = (volatile struct ra_snap *)((volatile u8 *)ra_snap + k * stride);
+
+        if (!ra_slot_complete(s, &sq))
+            continue;
+        if (latest == NULL || (int)(sq - latest_sq) > 0) {
+            latest = s;
+            latest_sq = sq;
+        }
+        if (ra_sent_any && (int)(sq - ra_sent_sq) > 0 && (next == NULL || (int)(sq - next_sq) < 0)) {
+            next = s;
+            next_sq = sq;
+        }
+    }
+
+    if (!ra_sent_any)
+        next = latest;
+    ra_cur = next != NULL ? next : latest;
+    return next != NULL ? 1 : 0;
 }
 
 /* ---- Discovery --------------------------------------------------------- */
@@ -1289,7 +1343,12 @@ static void ra_thread(void *arg)
         int pending = ra_snap_pending();
 
         if (pending > 0) {
-            ra_send_one();
+            int n = 0;
+
+            /* Everything that is waiting, a slot's worth at most. */
+            do {
+                ra_send_one();
+            } while (++n < RA_SNAP_SLOTS && ra_snap_pending() > 0);
             idle = 0;
         } else if (pending < 0) {
             if (iter % RA_IDLE_TICKS == 0)

@@ -263,6 +263,8 @@ static void rp_frame_values(int read)
         s->game_id[i] = rp_game_id[i];
     s->read_cycles = 0;
     s->frame_cycles = 0;
+    s->slots = 1; /* one buffer, see ra_snap.h */
+    s->stride = 0;
 
     for (i = 0; i < rp_count; i++) {
         u32 size = RA_WATCH_SIZE(rp_list[i]);
